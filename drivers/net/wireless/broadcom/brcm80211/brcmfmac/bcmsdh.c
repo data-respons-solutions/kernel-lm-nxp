@@ -63,16 +63,18 @@ static irqreturn_t brcmf_sdiod_oob_irqhandler(int irq, void *dev_id)
 {
 	struct brcmf_bus *bus_if = dev_get_drvdata(dev_id);
 	struct brcmf_sdio_dev *sdiodev = bus_if->bus_priv.sdio;
-
+	unsigned long flags;
 	brcmf_dbg(INTR, "OOB intr triggered\n");
 
 	/* out-of-band interrupt is level-triggered which won't
 	 * be cleared until dpc
 	 */
+	spin_lock_irqsave(&sdiodev->irq_en_lock, flags);
 	if (sdiodev->irq_en) {
 		disable_irq_nosync(irq);
 		sdiodev->irq_en = false;
 	}
+	spin_unlock_irqrestore(&sdiodev->irq_en_lock, flags);
 
 	brcmf_sdio_isr(sdiodev->bus, true);
 
@@ -1145,7 +1147,6 @@ static int brcmf_ops_sdio_suspend(struct device *dev)
 	if (pm_caps & MMC_PM_KEEP_POWER) {
 		/* preserve card power during suspend */
 		brcmf_sdiod_freezer_on(sdiodev);
-		brcmf_sdio_wd_timer(sdiodev->bus, 0);
 
 		sdio_flags = MMC_PM_KEEP_POWER;
 		if (sdiodev->wowl_enabled) {

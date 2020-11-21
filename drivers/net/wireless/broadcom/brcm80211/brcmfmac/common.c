@@ -117,7 +117,7 @@ static int brcmf_c_download(struct brcmf_if *ifp, u16 flag,
 	return err;
 }
 
-static int brcmf_c_process_clm_blob(struct brcmf_if *ifp)
+static __maybe_unused int brcmf_c_process_clm_blob(struct brcmf_if *ifp)
 {
 	struct brcmf_pub *drvr = ifp->drvr;
 	struct brcmf_bus *bus = drvr->bus_if;
@@ -249,13 +249,14 @@ int brcmf_c_preinit_dcmds(struct brcmf_if *ifp)
 		brcmf_chip_name(bus->chip, bus->chiprev,
 				ri->chipname, sizeof(ri->chipname));
 
+#if 0
 	/* Do any CLM downloading */
 	err = brcmf_c_process_clm_blob(ifp);
 	if (err < 0) {
 		bphy_err(drvr, "download CLM blob file failed, %d\n", err);
 		goto done;
 	}
-
+#endif
 	/* query for 'ver' to get version info from firmware */
 	memset(buf, 0, sizeof(buf));
 	err = brcmf_fil_iovar_data_get(ifp, "ver", buf, sizeof(buf));
