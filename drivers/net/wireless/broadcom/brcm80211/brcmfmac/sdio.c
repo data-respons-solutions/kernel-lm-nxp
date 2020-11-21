@@ -113,6 +113,10 @@ struct rte_console {
 #include "debug.h"
 #include "tracepoint.h"
 
+static int brcmf_sdiod_no_bus_sleep = 1;
+module_param_named(no_bus_sleep, brcmf_sdiod_no_bus_sleep, int, 0);
+MODULE_PARM_DESC(no_bus_sleep, "No bus sleep allowed [SDIO]");
+
 #define TXQLEN		2048	/* bulk tx queue length */
 #define TXHI		(TXQLEN - 256)	/* turn on flow control above TXHI */
 #define TXLOW		(TXHI - 256)	/* turn off flow control below TXLOW */
@@ -442,7 +446,7 @@ struct brcmf_sdio {
 	struct brcmf_core *sdio_core; /* sdio core info struct */
 
 	u32 hostintmask;	/* Copy of Host Interrupt Mask */
-	atomic_t intstatus;	/* Intstatus bits (events) pending */
+	u32 intstatus;	/* Intstatus bits (events) pending */
 	atomic_t fcstate;	/* State of dongle flow-control */
 
 	uint blocksize;		/* Block size of SDIO transfers */
@@ -477,8 +481,6 @@ struct brcmf_sdio {
 
 	u8 sdpcm_ver;	/* Bus protocol reported by dongle */
 
-	bool intr;		/* Use interrupts */
-	bool poll;		/* Use polling */
 	atomic_t ipend;		/* Device interrupt is pending */
 	uint spurious;		/* Count of spurious interrupts */
 	uint pollrate;		/* Ticks between device polls */
@@ -650,6 +652,11 @@ static const struct brcmf_firmware_mapping brcmf_sdio_fwnames[] = {
 };
 
 #define TXCTL_CREDITS	2
+
+static u8 tx_credits(struct brcmf_sdio *bus)
+{
+	return bus->tx_max - bus->tx_seq;
+}
 
 static void pkt_align(struct sk_buff *p, int len, int align)
 {
@@ -959,6 +966,10 @@ brcmf_sdio_bus_sleep(struct brcmf_sdio *bus, bool sleep, bool pendok)
 		  (sleep ? "SLEEP" : "WAKE"),
 		  (bus->sleeping ? "SLEEP" : "WAKE"));
 
+	if (brcmf_sdiod_no_bus_sleep && sleep) {
+		brcmf_dbg(SDIO, "Sleep disabled\n");
+		return 0;
+	}
 	/* If SR is enabled control bus state with KSO */
 	if (bus->sr_enabled) {
 		/* Done if we're already in the requested state */
@@ -994,7 +1005,6 @@ end:
 			brcmf_sdio_clkctl(bus, CLK_NONE, pendok);
 	} else {
 		brcmf_sdio_clkctl(bus, CLK_AVAIL, pendok);
-		brcmf_sdio_wd_timer(bus, true);
 	}
 	bus->sleeping = sleep;
 	brcmf_dbg(SDIO, "new state %s\n",
@@ -2320,8 +2330,6 @@ static uint brcmf_sdio_sendfromq(struct brcmf_sdio *bus, uint maxframes)
 {
 	struct sk_buff *pkt;
 	struct sk_buff_head pktq;
-	u32 intstat_addr = bus->sdio_core->base + SD_REG(intstatus);
-	u32 intstatus = 0;
 	int ret = 0, prec_out, i;
 	uint cnt = 0;
 	u8 tx_prec_map, pkt_num;
@@ -2333,11 +2341,12 @@ static uint brcmf_sdio_sendfromq(struct brcmf_sdio *bus, uint maxframes)
 	/* Send frames until the limit or some other event */
 	for (cnt = 0; (cnt < maxframes) && data_ok(bus);) {
 		pkt_num = 1;
-		if (bus->txglom)
+		if (bus->txglom) {
 			pkt_num = min_t(u8, bus->tx_max - bus->tx_seq,
 					bus->sdiodev->txglomsz);
-		pkt_num = min_t(u32, pkt_num,
+			pkt_num = min_t(u32, pkt_num,
 				brcmu_pktq_mlen(&bus->txq, ~bus->flowcontrol));
+		}
 		__skb_queue_head_init(&pktq);
 		spin_lock_bh(&bus->txq_lock);
 		for (i = 0; i < pkt_num; i++) {
@@ -2354,21 +2363,6 @@ static uint brcmf_sdio_sendfromq(struct brcmf_sdio *bus, uint maxframes)
 		ret = brcmf_sdio_txpkt(bus, &pktq, SDPCM_DATA_CHANNEL);
 
 		cnt += i;
-
-		/* In poll mode, need to check for other events */
-		if (!bus->intr) {
-			/* Check device status, signal pending interrupt */
-			sdio_claim_host(bus->sdiodev->func1);
-			intstatus = brcmf_sdiod_readl(bus->sdiodev,
-						      intstat_addr, &ret);
-			sdio_release_host(bus->sdiodev->func1);
-
-			bus->sdcnt.f2txdata++;
-			if (ret != 0)
-				break;
-			if (intstatus & bus->hostintmask)
-				atomic_set(&bus->ipend, 1);
-		}
 	}
 
 	/* Deflow-control stack if needed */
@@ -2562,7 +2556,7 @@ static int brcmf_sdio_intr_rstatus(struct brcmf_sdio *bus)
 	if (val) {
 		brcmf_sdiod_writel(bus->sdiodev, addr, val, &ret);
 		bus->sdcnt.f1regdata++;
-		atomic_or(val, &bus->intstatus);
+		bus->intstatus |= val;
 	}
 
 	return ret;
@@ -2613,13 +2607,13 @@ static void brcmf_sdio_dpc(struct brcmf_sdio *bus)
 	brcmf_sdio_bus_sleep(bus, false, true);
 
 	/* Pending interrupt indicates new device status */
-	if (atomic_read(&bus->ipend) > 0) {
-		atomic_set(&bus->ipend, 0);
+	if (atomic_xchg(&bus->ipend, 0)) {
 		err = brcmf_sdio_intr_rstatus(bus);
 	}
 
 	/* Start with leftover status bits */
-	intstatus = atomic_xchg(&bus->intstatus, 0);
+	intstatus = bus->intstatus;
+	bus->intstatus = 0;
 
 	/* Handle flow-control change: read new state in case our ack
 	 * crossed another change interrupt.  If change still set, assume
@@ -2680,7 +2674,7 @@ static void brcmf_sdio_dpc(struct brcmf_sdio *bus)
 
 	/* Keep still-pending events for next scheduling */
 	if (intstatus)
-		atomic_or(intstatus, &bus->intstatus);
+		bus->intstatus |= intstatus;
 
 	brcmf_sdio_clrintr(bus);
 
@@ -2702,8 +2696,8 @@ static void brcmf_sdio_dpc(struct brcmf_sdio *bus)
 	}
 	/* Send queued frames (limit 1 if rx may still be pending) */
 	if ((bus->clkstate == CLK_AVAIL) && !atomic_read(&bus->fcstate) &&
-	    brcmu_pktq_mlen(&bus->txq, ~bus->flowcontrol) && txlimit &&
-	    data_ok(bus)) {
+	    brcmu_pktq_mlen(&bus->txq, ~bus->flowcontrol)
+	    ) {
 		framecnt = bus->rxpending ? min(txlimit, bus->txminmax) :
 					    txlimit;
 		brcmf_sdio_sendfromq(bus, framecnt);
@@ -2711,7 +2705,7 @@ static void brcmf_sdio_dpc(struct brcmf_sdio *bus)
 
 	if ((bus->sdiodev->state != BRCMF_SDIOD_DATA) || (err != 0)) {
 		brcmf_err("failed backplane access over SDIO, halting operation\n");
-		atomic_set(&bus->intstatus, 0);
+		bus->intstatus = 0;
 		if (bus->ctrl_frame_stat) {
 			sdio_claim_host(bus->sdiodev->func1);
 			if (bus->ctrl_frame_stat) {
@@ -2722,7 +2716,7 @@ static void brcmf_sdio_dpc(struct brcmf_sdio *bus)
 			}
 			sdio_release_host(bus->sdiodev->func1);
 		}
-	} else if (atomic_read(&bus->intstatus) ||
+	} else if (bus->intstatus ||
 		   atomic_read(&bus->ipend) > 0 ||
 		   (!atomic_read(&bus->fcstate) &&
 		    brcmu_pktq_mlen(&bus->txq, ~bus->flowcontrol) &&
@@ -2805,7 +2799,6 @@ static int brcmf_sdio_bus_txdata(struct device *dev, struct sk_buff *pkt)
 	 */
 	prec = brcmf_map_prio_to_prec(bus_if->drvr->config,
 				      (pkt->priority & PRIOMASK));
-
 	/* Check for existing queue, current flow-control,
 			 pending event, or pending clock */
 	brcmf_dbg(TRACE, "deferring pktq len %d\n", pktq_len(&bus->txq));
@@ -3637,104 +3630,18 @@ void brcmf_sdio_isr(struct brcmf_sdio *bus, bool in_isr)
 	/* Count the interrupt call */
 	bus->sdcnt.intrcount++;
 	if (in_isr)
-		atomic_set(&bus->ipend, 1);
+		atomic_xchg(&bus->ipend, 1);
 	else
 		if (brcmf_sdio_intr_rstatus(bus)) {
 			brcmf_err("failed backplane access\n");
 		}
 
-	/* Disable additional interrupts (is this needed now)? */
-	if (!bus->intr)
-		brcmf_err("isr w/o interrupt configured!\n");
 
 	bus->dpc_triggered = true;
 	queue_work(bus->brcmf_wq, &bus->datawork);
 }
 
-static void brcmf_sdio_bus_watchdog(struct brcmf_sdio *bus)
-{
-	brcmf_dbg(TIMER, "Enter\n");
 
-	/* Poll period: check device if appropriate. */
-	if (!bus->sr_enabled &&
-	    bus->poll && (++bus->polltick >= bus->pollrate)) {
-		u32 intstatus = 0;
-
-		/* Reset poll tick */
-		bus->polltick = 0;
-
-		/* Check device if no interrupts */
-		if (!bus->intr ||
-		    (bus->sdcnt.intrcount == bus->sdcnt.lastintrs)) {
-
-			if (!bus->dpc_triggered) {
-				u8 devpend;
-
-				sdio_claim_host(bus->sdiodev->func1);
-				devpend = brcmf_sdiod_func0_rb(bus->sdiodev,
-						  SDIO_CCCR_INTx, NULL);
-				sdio_release_host(bus->sdiodev->func1);
-				intstatus = devpend & (INTR_STATUS_FUNC1 |
-						       INTR_STATUS_FUNC2);
-			}
-
-			/* If there is something, make like the ISR and
-				 schedule the DPC */
-			if (intstatus) {
-				bus->sdcnt.pollcnt++;
-				atomic_set(&bus->ipend, 1);
-
-				bus->dpc_triggered = true;
-				queue_work(bus->brcmf_wq, &bus->datawork);
-			}
-		}
-
-		/* Update interrupt tracking */
-		bus->sdcnt.lastintrs = bus->sdcnt.intrcount;
-	}
-#ifdef DEBUG
-	/* Poll for console output periodically */
-	if (bus->sdiodev->state == BRCMF_SDIOD_DATA && BRCMF_FWCON_ON() &&
-	    bus->console_interval != 0) {
-		bus->console.count += jiffies_to_msecs(BRCMF_WD_POLL);
-		if (bus->console.count >= bus->console_interval) {
-			bus->console.count -= bus->console_interval;
-			sdio_claim_host(bus->sdiodev->func1);
-			/* Make sure backplane clock is on */
-			brcmf_sdio_bus_sleep(bus, false, false);
-			if (brcmf_sdio_readconsole(bus) < 0)
-				/* stop on error */
-				bus->console_interval = 0;
-			sdio_release_host(bus->sdiodev->func1);
-		}
-	}
-#endif				/* DEBUG */
-
-	/* On idle timeout clear activity flag and/or turn off clock */
-	if (!bus->dpc_triggered) {
-		rmb();
-		if ((!bus->dpc_running) && (bus->idletime > 0) &&
-		    (bus->clkstate == CLK_AVAIL)) {
-			bus->idlecount++;
-			if (bus->idlecount > bus->idletime) {
-				brcmf_dbg(SDIO, "idle\n");
-				sdio_claim_host(bus->sdiodev->func1);
-#ifdef DEBUG
-				if (!BRCMF_FWCON_ON() ||
-				    bus->console_interval == 0)
-#endif
-					brcmf_sdio_wd_timer(bus, false);
-				bus->idlecount = 0;
-				brcmf_sdio_bus_sleep(bus, true, false);
-				sdio_release_host(bus->sdiodev->func1);
-			}
-		} else {
-			bus->idlecount = 0;
-		}
-	} else {
-		bus->idlecount = 0;
-	}
-}
 
 static void brcmf_sdio_dataworker(struct work_struct *work)
 {
@@ -4059,58 +3966,11 @@ brcmf_sdio_probe_attach(struct brcmf_sdio *bus)
 	bus->rxhdr = (u8 *) roundup((unsigned long)&bus->hdrbuf[0],
 				    bus->head_align);
 
-	/* Set the poll and/or interrupt flags */
-	bus->intr = true;
-	bus->poll = false;
-	if (bus->poll)
-		bus->pollrate = 1;
-
 	return true;
 
 fail:
 	sdio_release_host(sdiodev->func1);
 	return false;
-}
-
-static int
-brcmf_sdio_watchdog_thread(void *data)
-{
-	struct brcmf_sdio *bus = (struct brcmf_sdio *)data;
-	int wait;
-
-	allow_signal(SIGTERM);
-	/* Run until signal received */
-	brcmf_sdiod_freezer_count(bus->sdiodev);
-	while (1) {
-		if (kthread_should_stop())
-			break;
-		brcmf_sdiod_freezer_uncount(bus->sdiodev);
-		wait = wait_for_completion_interruptible(&bus->watchdog_wait);
-		brcmf_sdiod_freezer_count(bus->sdiodev);
-		brcmf_sdiod_try_freeze(bus->sdiodev);
-		if (!wait) {
-			brcmf_sdio_bus_watchdog(bus);
-			/* Count the tick for reference */
-			bus->sdcnt.tickcnt++;
-			reinit_completion(&bus->watchdog_wait);
-		} else
-			break;
-	}
-	return 0;
-}
-
-static void
-brcmf_sdio_watchdog(struct timer_list *t)
-{
-	struct brcmf_sdio *bus = from_timer(bus, t, timer);
-
-	if (bus->watchdog_tsk) {
-		complete(&bus->watchdog_wait);
-		/* Reschedule the watchdog */
-		if (bus->wd_active)
-			mod_timer(&bus->timer,
-				  jiffies + BRCMF_WD_POLL);
-	}
 }
 
 static
@@ -4179,6 +4039,7 @@ static const struct brcmf_bus_ops brcmf_sdio_bus_ops = {
 
 #define BRCMF_SDIO_FW_CODE	0
 #define BRCMF_SDIO_FW_NVRAM	1
+static int fw_ready = 0;
 
 static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 					 struct brcmf_fw_request *fwreq)
@@ -4212,7 +4073,6 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 
 	/* Start the watchdog timer */
 	bus->sdcnt.tickcnt = 0;
-	brcmf_sdio_wd_timer(bus, true);
 
 	sdio_claim_host(sdiod->func1);
 
@@ -4373,7 +4233,7 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 		brcmf_err("brcmf_attach failed\n");
 		goto free;
 	}
-
+	fw_ready = 1;
 	/* ready */
 	return;
 
@@ -4390,6 +4250,12 @@ fail:
 	device_release_driver(&sdiod->func2->dev);
 	device_release_driver(dev);
 }
+
+int brcmf_sdio_fw_ready(void)
+{
+	return fw_ready;
+}
+EXPORT_SYMBOL(brcmf_sdio_fw_ready);
 
 static struct brcmf_fw_request *
 brcmf_sdio_prepare_fw_request(struct brcmf_sdio *bus)
@@ -4437,7 +4303,7 @@ struct brcmf_sdio *brcmf_sdio_probe(struct brcmf_sdio_dev *sdiodev)
 	bus->tx_seq = SDPCM_SEQ_WRAP - 1;
 
 	/* single-threaded workqueue */
-	wq = alloc_ordered_workqueue("brcmf_wq/%s", WQ_MEM_RECLAIM,
+	wq = alloc_ordered_workqueue("brcmf_wq/%s", WQ_MEM_RECLAIM | WQ_HIGHPRI,
 				     dev_name(&sdiodev->func1->dev));
 	if (!wq) {
 		brcmf_err("insufficient memory to create txworkqueue\n");
@@ -4458,17 +4324,6 @@ struct brcmf_sdio *brcmf_sdio_probe(struct brcmf_sdio_dev *sdiodev)
 	init_waitqueue_head(&bus->ctrl_wait);
 	init_waitqueue_head(&bus->dcmd_resp_wait);
 
-	/* Set up the watchdog timer */
-	timer_setup(&bus->timer, brcmf_sdio_watchdog, 0);
-	/* Initialize watchdog thread */
-	init_completion(&bus->watchdog_wait);
-	bus->watchdog_tsk = kthread_run(brcmf_sdio_watchdog_thread,
-					bus, "brcmf_wdog/%s",
-					dev_name(&sdiodev->func1->dev));
-	if (IS_ERR(bus->watchdog_tsk)) {
-		pr_warn("brcmf_watchdog thread failed to start\n");
-		bus->watchdog_tsk = NULL;
-	}
 	/* Initialize DPC thread */
 	bus->dpc_triggered = false;
 	bus->dpc_running = false;
@@ -4529,12 +4384,6 @@ void brcmf_sdio_remove(struct brcmf_sdio *bus)
 	brcmf_dbg(TRACE, "Enter\n");
 
 	if (bus) {
-		/* Stop watchdog task */
-		if (bus->watchdog_tsk) {
-			send_sig(SIGTERM, bus->watchdog_tsk, 1);
-			kthread_stop(bus->watchdog_tsk);
-			bus->watchdog_tsk = NULL;
-		}
 
 		/* De-register interrupt handler */
 		brcmf_sdiod_intr_unregister(bus->sdiodev);
@@ -4549,7 +4398,6 @@ void brcmf_sdio_remove(struct brcmf_sdio *bus)
 		if (bus->ci) {
 			if (bus->sdiodev->state != BRCMF_SDIOD_NOMEDIUM) {
 				sdio_claim_host(bus->sdiodev->func1);
-				brcmf_sdio_wd_timer(bus, false);
 				brcmf_sdio_clkctl(bus, CLK_AVAIL, false);
 				/* Leave the device in state where it is
 				 * 'passive'. This is done by resetting all
@@ -4571,34 +4419,6 @@ void brcmf_sdio_remove(struct brcmf_sdio *bus)
 	}
 
 	brcmf_dbg(TRACE, "Disconnected\n");
-}
-
-void brcmf_sdio_wd_timer(struct brcmf_sdio *bus, bool active)
-{
-	/* Totally stop the timer */
-	if (!active && bus->wd_active) {
-		del_timer_sync(&bus->timer);
-		bus->wd_active = false;
-		return;
-	}
-
-	/* don't start the wd until fw is loaded */
-	if (bus->sdiodev->state != BRCMF_SDIOD_DATA)
-		return;
-
-	if (active) {
-		if (!bus->wd_active) {
-			/* Create timer again when watchdog period is
-			   dynamically changed or in the first instance
-			 */
-			bus->timer.expires = jiffies + BRCMF_WD_POLL;
-			add_timer(&bus->timer);
-			bus->wd_active = true;
-		} else {
-			/* Re arm the timer, at last watchdog period */
-			mod_timer(&bus->timer, jiffies + BRCMF_WD_POLL);
-		}
-	}
 }
 
 int brcmf_sdio_sleep(struct brcmf_sdio *bus, bool sleep)
