@@ -100,6 +100,8 @@ snd-soc-imx-dsp-objs := imx-dsp.o
 snd-soc-imx-si476x-objs := imx-si476x.o
 snd-soc-imx-hdmi-objs := imx-hdmi.o
 snd-soc-imx-cdnhdmi-objs := imx-cdnhdmi.o
+snd-soc-lm-imx-wm8960-objs := lm-imx-wm8960.o
+snd-soc-lm-pcm1681-objs := imx-pcm1681.o
 
 obj-$(CONFIG_SND_SOC_EUKREA_TLV320) += snd-soc-eukrea-tlv320.o
 obj-$(CONFIG_SND_SOC_PHYCORE_AC97) += snd-soc-phycore-ac97.o
@@ -112,17 +114,5 @@ obj-$(CONFIG_SND_SOC_IMX_SII902X) += snd-soc-imx-sii902x.o
 obj-$(CONFIG_SND_SOC_IMX_SPDIF) += snd-soc-imx-spdif.o
 obj-$(CONFIG_SND_SOC_IMX_MC13783) += snd-soc-imx-mc13783.o
 obj-$(CONFIG_SND_SOC_IMX_AUDMIX) += snd-soc-imx-audmix.o
-obj-$(CONFIG_SND_SOC_IMX_RPMSG) += snd-soc-imx-rpmsg.o
-obj-$(CONFIG_SND_SOC_IMX_XCVR) += snd-soc-imx-xcvr.o
-obj-$(CONFIG_SND_SOC_IMX_PDM_MIC) += snd-soc-imx-pdm.o
-obj-$(CONFIG_SND_SOC_IMX_AK4458) += snd-soc-imx-ak4458.o
-obj-$(CONFIG_SND_SOC_IMX_AK5558) += snd-soc-imx-ak5558.o
-obj-$(CONFIG_SND_SOC_IMX_AK4497) += snd-soc-imx-ak4497.o
-obj-$(CONFIG_SND_SOC_IMX_MICFIL) += snd-soc-imx-micfil.o
-obj-$(CONFIG_SND_SOC_IMX_PCM512X) += snd-soc-imx-pcm512x.o
-obj-$(CONFIG_SND_SOC_IMX_DSP) += snd-soc-imx-dsp.o
-obj-$(CONFIG_SND_SOC_IMX_SI476X) += snd-soc-imx-si476x.o
-obj-$(CONFIG_SND_SOC_IMX_HDMI) += snd-soc-imx-hdmi.o
-obj-$(CONFIG_SND_SOC_IMX_CDNHDMI) += snd-soc-imx-cdnhdmi.o
-
-AFLAGS_hdmi_pcm.o := -march=armv7-a -mtune=cortex-a9 -mfpu=neon -mfloat-abi=softfp
+obj-$(CONFIG_SND_SOC_LM_IMX_WM8960) += snd-soc-lm-imx-wm8960.o
+obj-$(CONFIG_SND_SOC_LM_PCM1681) += snd-soc-lm-pcm1681.o

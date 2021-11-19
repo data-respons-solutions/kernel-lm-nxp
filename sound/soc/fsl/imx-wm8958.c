@@ -195,7 +195,7 @@ static int imx_hifi_hw_params(struct snd_pcm_substream *substream,
 		}
 
 		ret = snd_soc_dai_set_sysclk(codec_dai, WM8994_SYSCLK_FLL1,
-				pll_out, SND_SOC_CLOCK_OUT);
+				cp, SND_SOC_CLOCK_OUT);
 		if (ret) {
 			dev_err(dev, "failed to set codec sysclk: %d\n", ret);
 			return ret;

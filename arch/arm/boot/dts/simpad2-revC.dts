@@ -844,7 +844,6 @@
 };
 
 &usdhc3 {
-	compatible = "fsl,imx6sl-usdhc";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc3>;
 	bus-width = <8>;
