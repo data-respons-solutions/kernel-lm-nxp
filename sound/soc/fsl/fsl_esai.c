@@ -20,7 +20,9 @@
 #define FSL_ESAI_FORMATS	(SNDRV_PCM_FMTBIT_S8 | \
 				SNDRV_PCM_FMTBIT_S16_LE | \
 				SNDRV_PCM_FMTBIT_S20_3LE | \
-				SNDRV_PCM_FMTBIT_S24_LE)
+				SNDRV_PCM_FMTBIT_S24_LE | \
+				SNDRV_PCM_FMTBIT_S32_LE)
+
 
 static struct fsl_esai_soc_data fsl_esai_vf610 = {
 	.imx = false,
@@ -1116,7 +1118,7 @@ static int fsl_esai_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "failed to init imx pcm dma: %d\n", ret);
 	} else {
 		ret = imx_pcm_dma_init(pdev, IMX_ESAI_DMABUF_SIZE);
-		if (ret)
+		if (ret && ret != -EPROBE_DEFER)
 			dev_err(&pdev->dev, "failed to init imx pcm dma: %d\n", ret);
 	}
 

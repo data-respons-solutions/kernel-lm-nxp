@@ -245,7 +245,7 @@
 	sound_2ch {
 		compatible = "fsl,lm-imx-audio-wm8960";
 		model = "wm8960-audio";
-		ssi-controller = <&ssi2>;
+		audio-cpu = <&ssi2>;
 		audio-codec = <&codec>;
 		audio-routing =
 			"Headphone Jack", "HP_L",
@@ -489,7 +489,7 @@
 	status = "okay";
 
 	codec: wm8960@1a {
-		compatible = "wlf,wm8960-lm";
+		compatible = "wlf,wm8960";
 		reg = <0x1a>;
 		clocks = <&clks IMX6QDL_CLK_CKO>;
 		clock-names = "mclk";
@@ -925,7 +925,7 @@
 	status = "okay";
 
 	bluetooth {
-		compatible = "brcm,bcm43438-bt";
+		compatible = "brcm,bcm43241-bt";
 		clocks = <&bt_clk 0>;
 		clock-names = "lpo";
 		max-speed = <921600>;
@@ -986,7 +986,6 @@
 };
 
 &usdhc3 {
-	compatible = "fsl,imx6sl-usdhc";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc3>;
 	bus-width = <8>;
