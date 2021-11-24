@@ -112,7 +112,7 @@ static int w1_ds2781_add_slave(struct w1_slave *sl)
 	int ret;
 	struct platform_device *pdev;
 
-	pdev = platform_device_alloc("ds2781-bat", PLATFORM_DEVID_AUTO);
+	pdev = platform_device_alloc("ds2781-battery", PLATFORM_DEVID_AUTO);
 	if (!pdev)
 		return -ENOMEM;
 	pdev->dev.parent = &sl->dev;
