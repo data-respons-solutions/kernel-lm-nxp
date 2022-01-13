@@ -13,6 +13,7 @@
 #include "imx6dl.dtsi"
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/net/qca-ar803x.h>
 
 / {
 	model = "Laerdal Medical SIMPAD PLUS (REV C)";
@@ -292,11 +293,22 @@
 	   #address-cells = <1>;
 	   #size-cells = <0>;
 	   arphy: ethernet-phy@0 {
-		   compatible = "ethernet-phy-ieee802.3-c22";
+		   #compatible = "ethernet-phy-ieee802.3-c22";
+		   compatible = "ethernet-phy-id004d.d074";
+		   qca,clk-out-frequency = <125000000>;
+		   qca,clk-out-strength = <AR803X_STRENGTH_FULL>;
+		   qca,keep-pll-enabled;
+		   at803x,eee-disabled;
 		   reg = <0x0>;
 		   max-speed = <100>;
 		   interrupt-parent = <&gpio1>;
 		   interrupts = <26 IRQ_TYPE_EDGE_FALLING>;
+			vddio-supply = <&vddio>;
+
+			vddio: vddio-regulator {
+				regulator-min-microvolt = <1500000>;
+				regulator-max-microvolt = <1500000>;
+			};
 	   };
 	};
 };
@@ -714,7 +726,7 @@
 				MX6QDL_PAD_RGMII_TD2__RGMII_TD2       0x1b030
 				MX6QDL_PAD_RGMII_TD3__RGMII_TD3       0x1b030
 				MX6QDL_PAD_RGMII_TX_CTL__RGMII_TX_CTL 0x1b030
-				MX6QDL_PAD_ENET_REF_CLK__ENET_TX_CLK  0x120b0
+				MX6QDL_PAD_ENET_REF_CLK__ENET_TX_CLK  0x40000031
 				MX6QDL_PAD_RGMII_RXC__RGMII_RXC       0x1b030
 				MX6QDL_PAD_RGMII_RD0__RGMII_RD0       0x1b030
 				MX6QDL_PAD_RGMII_RD1__RGMII_RD1       0x1b030
@@ -740,27 +752,27 @@
 		pinctrl_ipu1_simpad: ipu1grp-simpad {
 			fsl,pins = <
 				MX6QDL_PAD_DI0_DISP_CLK__IPU1_DI0_DISP_CLK	0xa1
-			MX6QDL_PAD_DI0_PIN15__IPU1_DI0_PIN15		0xa1
-			MX6QDL_PAD_DI0_PIN2__IPU1_DI0_PIN02		    0xa1
-			MX6QDL_PAD_DI0_PIN3__IPU1_DI0_PIN03		    0xa1
-			MX6QDL_PAD_DISP0_DAT0__IPU1_DISP0_DATA00	0xa1
-			MX6QDL_PAD_DISP0_DAT1__IPU1_DISP0_DATA01	0xa1
-			MX6QDL_PAD_DISP0_DAT2__IPU1_DISP0_DATA02	0xa1
-			MX6QDL_PAD_DISP0_DAT3__IPU1_DISP0_DATA03	0xa1
-			MX6QDL_PAD_DISP0_DAT4__IPU1_DISP0_DATA04	0xa1
-			MX6QDL_PAD_DISP0_DAT5__IPU1_DISP0_DATA05	0xa1
-			MX6QDL_PAD_DISP0_DAT6__IPU1_DISP0_DATA06	0xa1
-			MX6QDL_PAD_DISP0_DAT7__IPU1_DISP0_DATA07	0xa1
-			MX6QDL_PAD_DISP0_DAT8__IPU1_DISP0_DATA08	0xa1
-			MX6QDL_PAD_DISP0_DAT9__IPU1_DISP0_DATA09	0xa1
-			MX6QDL_PAD_DISP0_DAT10__IPU1_DISP0_DATA10	0xa1
-			MX6QDL_PAD_DISP0_DAT11__IPU1_DISP0_DATA11	0xa1
-			MX6QDL_PAD_DISP0_DAT12__IPU1_DISP0_DATA12	0xa1
-			MX6QDL_PAD_DISP0_DAT13__IPU1_DISP0_DATA13	0xa1
-			MX6QDL_PAD_DISP0_DAT14__IPU1_DISP0_DATA14	0xa1
-			MX6QDL_PAD_DISP0_DAT15__IPU1_DISP0_DATA15	0xa1
-			MX6QDL_PAD_DISP0_DAT16__IPU1_DISP0_DATA16	0xa1
-			MX6QDL_PAD_DISP0_DAT17__IPU1_DISP0_DATA17	0xa1
+				MX6QDL_PAD_DI0_PIN15__IPU1_DI0_PIN15		0xa1
+				MX6QDL_PAD_DI0_PIN2__IPU1_DI0_PIN02		    0xa1
+				MX6QDL_PAD_DI0_PIN3__IPU1_DI0_PIN03		    0xa1
+				MX6QDL_PAD_DISP0_DAT0__IPU1_DISP0_DATA00	0xa1
+				MX6QDL_PAD_DISP0_DAT1__IPU1_DISP0_DATA01	0xa1
+				MX6QDL_PAD_DISP0_DAT2__IPU1_DISP0_DATA02	0xa1
+				MX6QDL_PAD_DISP0_DAT3__IPU1_DISP0_DATA03	0xa1
+				MX6QDL_PAD_DISP0_DAT4__IPU1_DISP0_DATA04	0xa1
+				MX6QDL_PAD_DISP0_DAT5__IPU1_DISP0_DATA05	0xa1
+				MX6QDL_PAD_DISP0_DAT6__IPU1_DISP0_DATA06	0xa1
+				MX6QDL_PAD_DISP0_DAT7__IPU1_DISP0_DATA07	0xa1
+				MX6QDL_PAD_DISP0_DAT8__IPU1_DISP0_DATA08	0xa1
+				MX6QDL_PAD_DISP0_DAT9__IPU1_DISP0_DATA09	0xa1
+				MX6QDL_PAD_DISP0_DAT10__IPU1_DISP0_DATA10	0xa1
+				MX6QDL_PAD_DISP0_DAT11__IPU1_DISP0_DATA11	0xa1
+				MX6QDL_PAD_DISP0_DAT12__IPU1_DISP0_DATA12	0xa1
+				MX6QDL_PAD_DISP0_DAT13__IPU1_DISP0_DATA13	0xa1
+				MX6QDL_PAD_DISP0_DAT14__IPU1_DISP0_DATA14	0xa1
+				MX6QDL_PAD_DISP0_DAT15__IPU1_DISP0_DATA15	0xa1
+				MX6QDL_PAD_DISP0_DAT16__IPU1_DISP0_DATA16	0xa1
+				MX6QDL_PAD_DISP0_DAT17__IPU1_DISP0_DATA17	0xa1
 			>;
 		};
 
@@ -841,6 +853,7 @@
 	keep-power-in-suspend;
 	enable-sdio-wakeup;
 	status = "okay";
+	voltage-ranges = <3300 3300>;
 };
 
 &usdhc3 {
@@ -851,6 +864,7 @@
 	keep-power-in-suspend;
 	status = "okay";
 	no-1-8-v;
+	voltage-ranges = <3300 3300>;
 };
 
 
