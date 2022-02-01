@@ -186,11 +186,6 @@
 			value = <1>;
 		};
 
-		gpio-wlan-host-wake {
-			gpios = <&gpio2 6 GPIO_ACTIVE_HIGH>;
-			status = "okay";
-			bidir;
-		};
 
 		gpio-pwm3 {
 			gpios = <&gpio1 17 GPIO_ACTIVE_HIGH>;
@@ -966,23 +961,22 @@
 	pinctrl-0 = <&pinctrl_usdhc4 &pinctrl_wifi1>;
 	bus-width = <4>;
 	non-removable;
+	no-1-8-v;
 	keep-power-in-suspend;
-	enable-sdio-wakeup;
+	/delete-property/ enable-sdio-wakeup;
 	status = "okay";
-	#address-cells = <1>;
-	#size-cells = <0>;
+	pm-ignore-notify;
+	cap-power-off-card;
+	vmmc-supply = <&sw2_reg>;
+	voltage-ranges = <3300 3300>;
 
-/*
-	brcmf: wifi@1 {
+	brcmf: bcrmf@1 {
 		reg = <1>;
 		compatible = "brcm,bcm4329-fmac";
 		interrupt-parent = <&gpio2>;
-		interrupts = <5 GPIO_ACTIVE_HIGH>;
+		interrupts = <6 IRQ_TYPE_LEVEL_LOW>;
 		interrupt-names = "host-wake";
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_wifi1>;
 	};
-*/
 };
 
 &usdhc3 {
