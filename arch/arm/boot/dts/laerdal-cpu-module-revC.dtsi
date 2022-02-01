@@ -161,12 +161,6 @@
 			value = <1>;
 		};
 
-		gpio-wlan-host-wake {
-			gpios = <&gpio2 6 GPIO_ACTIVE_HIGH>;
-			status = "okay";
-			bidir;
-		};
-
 		gpio-gpo-d1 {
 			gpios = <&gpio7 13 GPIO_ACTIVE_HIGH>;
 			status = "okay";
@@ -790,10 +784,22 @@
 	pinctrl-0 = <&pinctrl_usdhc4 &pinctrl_wifi1>;
 	bus-width = <4>;
 	non-removable;
+	no-1-8-v;
 	keep-power-in-suspend;
-	enable-sdio-wakeup;
+	/delete-property/ enable-sdio-wakeup;
 	status = "okay";
+	pm-ignore-notify;
+	cap-power-off-card;
 	vmmc-supply = <&sw2_reg>;
+	voltage-ranges = <3300 3300>;
+
+	brcmf: bcrmf@1 {
+		reg = <1>;
+		compatible = "brcm,bcm4329-fmac";
+		interrupt-parent = <&gpio2>;
+		interrupts = <6 IRQ_TYPE_LEVEL_LOW>;
+		interrupt-names = "host-wake";
+	};
 };
 
 &usdhc3 {
@@ -803,6 +809,7 @@
 	non-removable;
 	no-1-8-v;
 	keep-power-in-suspend;
+	voltage-ranges = <3300 3300>;
 	status = "okay";
 };
 
@@ -831,6 +838,15 @@
 	status = "okay";
 };
 
+&clks {
+	assigned-clocks = <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>,
+			  <&clks IMX6QDL_PLL4_BYPASS>,
+			  <&clks IMX6QDL_CLK_ESAI_SEL>,
+			  <&clks IMX6QDL_CLK_ESAI_EXTAL>;
+	assigned-clock-parents = <&clks IMX6QDL_CLK_PLL4_POST_DIV>,
+				<&clks IMX6QDL_CLK_PLL4>, <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>;
+	assigned-clock-rates = <786432000>, <0>, <0>, <24576000>;
+};
 
 &ssi2 {
 	fsl,mode = "i2s-slave";
