@@ -530,6 +530,12 @@ struct brcmf_sdio {
 	bool txglom;		/* host tx glomming enable flag */
 	u16 head_align;		/* buffer pointer alignment */
 	u16 sgentry_align;	/* scatter-gather buffer alignment */
+
+	volatile ktime_t dpc_irqparse, dpc_irqparse_max;
+	volatile ktime_t dpc_rx, dpc_rx_max;
+	volatile ktime_t dpc_tx, dpc_tx_max;
+	volatile ktime_t dpc_txctl, dpc_txctl_max;
+	volatile ktime_t dpc_all, dpc_all_max;
 };
 
 /* clkstate */
@@ -2585,7 +2591,8 @@ static void brcmf_sdio_dpc(struct brcmf_sdio *bus)
 	uint txlimit = bus->txbound;	/* Tx frames to send before resched */
 	uint framecnt;			/* Temporary counter of tx/rx frames */
 	int err = 0;
-
+	volatile ktime_t now;
+	volatile ktime_t dpc_enter = ktime_get();
 	brcmf_dbg(SDIO, "Enter\n");
 
 	sdio_claim_host(bus->sdiodev->func1);
@@ -2619,7 +2626,6 @@ static void brcmf_sdio_dpc(struct brcmf_sdio *bus)
 
 	/* Make sure backplane clock is on */
 	brcmf_sdio_bus_sleep(bus, false, true);
-
 	/* Pending interrupt indicates new device status */
 	if (atomic_read(&bus->ipend) > 0) {
 		atomic_set(&bus->ipend, 0);
@@ -2628,7 +2634,6 @@ static void brcmf_sdio_dpc(struct brcmf_sdio *bus)
 
 	/* Start with leftover status bits */
 	intstatus = atomic_xchg(&bus->intstatus, 0);
-
 	/* Handle flow-control change: read new state in case our ack
 	 * crossed another change interrupt.  If change still set, assume
 	 * FC ON for safety, let next loop through do the debounce.
@@ -2644,13 +2649,12 @@ static void brcmf_sdio_dpc(struct brcmf_sdio *bus)
 			   !!(newstatus & (I_HMB_FC_STATE | I_HMB_FC_CHANGE)));
 		intstatus |= (newstatus & bus->hostintmask);
 	}
-
 	/* Handle host mailbox indication */
 	if (intstatus & I_HMB_HOST_INT) {
 		intstatus &= ~I_HMB_HOST_INT;
 		intstatus |= brcmf_sdio_hostmail(bus);
 	}
-
+	bus->dpc_irqparse = ktime_sub(ktime_get(), dpc_enter);
 	sdio_release_host(bus->sdiodev->func1);
 
 	/* Generally don't ask for these, can get CRC errors... */
@@ -2678,26 +2682,26 @@ static void brcmf_sdio_dpc(struct brcmf_sdio *bus)
 	/* Ignore frame indications if rxskip is set */
 	if (bus->rxskip)
 		intstatus &= ~I_HMB_FRAME_IND;
-
 	/* On frame indication, read available frames */
 	if ((intstatus & I_HMB_FRAME_IND) && (bus->clkstate == CLK_AVAIL)) {
+		now = ktime_get();
 		brcmf_sdio_readframes(bus, bus->rxbound);
 		if (!bus->rxpending)
 			intstatus &= ~I_HMB_FRAME_IND;
+		bus->dpc_rx = ktime_sub(ktime_get(), now);
 	}
-
 	/* Keep still-pending events for next scheduling */
 	if (intstatus)
 		atomic_or(intstatus, &bus->intstatus);
-
 	brcmf_sdio_clrintr(bus);
-
 	if (bus->ctrl_frame_stat && (bus->clkstate == CLK_AVAIL) &&
 	    txctl_ok(bus)) {
 		sdio_claim_host(bus->sdiodev->func1);
 		if (bus->ctrl_frame_stat) {
+			now = ktime_get();
 			err = brcmf_sdio_tx_ctrlframe(bus,  bus->ctrl_frame_buf,
 						      bus->ctrl_frame_len);
+			bus->dpc_txctl = ktime_sub(ktime_get(), now);
 			bus->ctrl_frame_err = err;
 			wmb();
 			bus->ctrl_frame_stat = false;
@@ -2712,11 +2716,13 @@ static void brcmf_sdio_dpc(struct brcmf_sdio *bus)
 	if ((bus->clkstate == CLK_AVAIL) && !atomic_read(&bus->fcstate) &&
 	    brcmu_pktq_mlen(&bus->txq, ~bus->flowcontrol) && txlimit &&
 	    data_ok(bus)) {
+
 		framecnt = bus->rxpending ? min(txlimit, bus->txminmax) :
 					    txlimit;
+		now = ktime_get();
 		brcmf_sdio_sendfromq(bus, framecnt);
+		bus->dpc_tx = ktime_sub(ktime_get(), now);
 	}
-
 	if ((bus->sdiodev->state != BRCMF_SDIOD_DATA) || (err != 0)) {
 		brcmf_err("failed backplane access over SDIO, halting operation\n");
 		atomic_set(&bus->intstatus, 0);
@@ -2737,6 +2743,17 @@ static void brcmf_sdio_dpc(struct brcmf_sdio *bus)
 		    data_ok(bus))) {
 		bus->dpc_triggered = true;
 	}
+	bus->dpc_all = ktime_sub(ktime_get(), dpc_enter);
+    if (bus->dpc_irqparse > bus->dpc_irqparse_max)
+        bus->dpc_irqparse_max = bus->dpc_irqparse;
+    if (bus->dpc_rx > bus->dpc_rx_max)
+        bus->dpc_rx_max = bus->dpc_rx;
+    if (bus->dpc_tx > bus->dpc_tx_max)
+        bus->dpc_tx_max = bus->dpc_tx;
+     if (bus->dpc_txctl > bus->dpc_txctl_max)
+        bus->dpc_txctl_max = bus->dpc_txctl;
+     if (bus->dpc_all > bus->dpc_all_max)
+        bus->dpc_all_max = bus->dpc_all;
 }
 
 static struct pktq *brcmf_sdio_bus_gettxq(struct device *dev)
@@ -3202,6 +3219,19 @@ static int brcmf_debugfs_sdio_count_read(struct seq_file *seq, void *data)
 		   sdcnt->tickcnt, sdcnt->tx_ctlerrs,
 		   sdcnt->tx_ctlpkts, sdcnt->rx_ctlerrs,
 		   sdcnt->rx_ctlpkts, sdcnt->rx_readahead_cnt);
+
+	seq_printf(seq, "DPC Timings\n"
+		"dpc_irqparse:  %lld (%lld)\n"
+		"dpc_rx:        %lld (%lld)\n"
+		"dpc_tx:        %lld (%lld)\n"
+		"dpc_txctl:     %lld (%lld)\n"
+		"dpc_all:       %lld (%lld)\n",
+		ktime_to_us(sdiodev->bus->dpc_irqparse), ktime_to_us(sdiodev->bus->dpc_irqparse_max),
+		ktime_to_us(sdiodev->bus->dpc_rx), ktime_to_us(sdiodev->bus->dpc_rx_max),
+		ktime_to_us(sdiodev->bus->dpc_tx), ktime_to_us(sdiodev->bus->dpc_tx_max),
+		ktime_to_us(sdiodev->bus->dpc_txctl), ktime_to_us(sdiodev->bus->dpc_txctl_max),
+		ktime_to_us(sdiodev->bus->dpc_all), ktime_to_us(sdiodev->bus->dpc_all_max)
+	);
 
 	return 0;
 }
@@ -4452,7 +4482,7 @@ struct brcmf_sdio *brcmf_sdio_probe(struct brcmf_sdio_dev *sdiodev)
 	bus->tx_seq = SDPCM_SEQ_WRAP - 1;
 
 	/* single-threaded workqueue */
-	wq = alloc_ordered_workqueue("brcmf_wq/%s", WQ_MEM_RECLAIM,
+	wq = alloc_ordered_workqueue("brcmf_wq/%s", WQ_MEM_RECLAIM | WQ_HIGHPRI,
 				     dev_name(&sdiodev->func1->dev));
 	if (!wq) {
 		brcmf_err("insufficient memory to create txworkqueue\n");
