@@ -202,7 +202,7 @@ void brcmf_sdiod_change_state(struct brcmf_sdio_dev *sdiodev,
 	    state == sdiodev->state)
 		return;
 
-	brcmf_dbg(TRACE, "%d -> %d\n", sdiodev->state, state);
+	brcmf_dbg(INFO, "%d -> %d\n", sdiodev->state, state);
 	switch (sdiodev->state) {
 	case BRCMF_SDIOD_DATA:
 		/* any other state means bus interface is down */
@@ -1145,7 +1145,6 @@ static int brcmf_ops_sdio_suspend(struct device *dev)
 	if (pm_caps & MMC_PM_KEEP_POWER) {
 		/* preserve card power during suspend */
 		brcmf_sdiod_freezer_on(sdiodev);
-		brcmf_sdio_wd_timer(sdiodev->bus, 0);
 
 		sdio_flags = MMC_PM_KEEP_POWER;
 		if (sdiodev->wowl_enabled) {
