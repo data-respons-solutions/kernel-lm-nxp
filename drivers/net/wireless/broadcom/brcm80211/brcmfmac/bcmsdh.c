@@ -59,6 +59,24 @@ struct brcmf_sdiod_freezer {
 	struct completion resumed;
 };
 
+
+void brcmf_sdio_claim_host(struct sdio_func *func)
+{
+	struct brcmf_bus *bus_if = dev_get_drvdata(&func->dev);
+	if (bus_if) {
+		bus_if->sdio_claims++;
+	}
+	sdio_claim_host(func);
+}
+
+void brcmf_sdio_release_host(struct sdio_func *func)
+{
+	struct brcmf_bus *bus_if = dev_get_drvdata(&func->dev);
+	sdio_release_host(func);
+	if (bus_if)
+		bus_if->sdio_claims--;
+}
+
 static irqreturn_t brcmf_sdiod_oob_irqhandler(int irq, void *dev_id)
 {
 	struct brcmf_bus *bus_if = dev_get_drvdata(dev_id);
@@ -69,11 +87,7 @@ static irqreturn_t brcmf_sdiod_oob_irqhandler(int irq, void *dev_id)
 	/* out-of-band interrupt is level-triggered which won't
 	 * be cleared until dpc
 	 */
-	if (sdiodev->irq_en) {
-		disable_irq_nosync(irq);
-		sdiodev->irq_en = false;
-	}
-
+	disable_irq_nosync(irq);
 	brcmf_sdio_isr(sdiodev->bus, true);
 
 	return IRQ_HANDLED;
@@ -105,8 +119,6 @@ int brcmf_sdiod_intr_register(struct brcmf_sdio_dev *sdiodev)
 	if (pdata->oob_irq_supported) {
 		brcmf_dbg(SDIO, "Enter, register OOB IRQ %d\n",
 			  pdata->oob_irq_nr);
-		spin_lock_init(&sdiodev->irq_en_lock);
-		sdiodev->irq_en = true;
 
 		ret = request_irq(pdata->oob_irq_nr, brcmf_sdiod_oob_irqhandler,
 				  pdata->oob_irq_flags, "brcmf_oob_intr",
@@ -124,7 +136,7 @@ int brcmf_sdiod_intr_register(struct brcmf_sdio_dev *sdiodev)
 		}
 		disable_irq_wake(pdata->oob_irq_nr);
 
-		sdio_claim_host(sdiodev->func1);
+		brcmf_sdio_claim_host(sdiodev->func1);
 
 		if (sdiodev->bus_if->chip == BRCM_CC_43362_CHIP_ID) {
 			/* assign GPIO to SDIO core */
@@ -151,13 +163,13 @@ int brcmf_sdiod_intr_register(struct brcmf_sdio_dev *sdiodev)
 			data |= SDIO_CCCR_BRCM_SEPINT_ACT_HI;
 		brcmf_sdiod_func0_wb(sdiodev, SDIO_CCCR_BRCM_SEPINT,
 				     data, &ret);
-		sdio_release_host(sdiodev->func1);
+		brcmf_sdio_release_host(sdiodev->func1);
 	} else {
 		brcmf_dbg(SDIO, "Entering\n");
-		sdio_claim_host(sdiodev->func1);
+		brcmf_sdio_claim_host(sdiodev->func1);
 		sdio_claim_irq(sdiodev->func1, brcmf_sdiod_ib_irqhandler);
 		sdio_claim_irq(sdiodev->func2, brcmf_sdiod_dummy_irqhandler);
-		sdio_release_host(sdiodev->func1);
+		brcmf_sdio_release_host(sdiodev->func1);
 		sdiodev->sd_irq_requested = true;
 	}
 
@@ -175,22 +187,21 @@ void brcmf_sdiod_intr_unregister(struct brcmf_sdio_dev *sdiodev)
 		struct brcmfmac_sdio_pd *pdata;
 
 		pdata = &sdiodev->settings->bus.sdio;
-		sdio_claim_host(sdiodev->func1);
+		brcmf_sdio_claim_host(sdiodev->func1);
 		brcmf_sdiod_func0_wb(sdiodev, SDIO_CCCR_BRCM_SEPINT, 0, NULL);
 		brcmf_sdiod_func0_wb(sdiodev, SDIO_CCCR_IENx, 0, NULL);
-		sdio_release_host(sdiodev->func1);
+		brcmf_sdio_release_host(sdiodev->func1);
 
 		sdiodev->oob_irq_requested = false;
 		free_irq(pdata->oob_irq_nr, &sdiodev->func1->dev);
-		sdiodev->irq_en = false;
 		sdiodev->oob_irq_requested = false;
 	}
 
 	if (sdiodev->sd_irq_requested) {
-		sdio_claim_host(sdiodev->func1);
+		brcmf_sdio_claim_host(sdiodev->func1);
 		sdio_release_irq(sdiodev->func2);
 		sdio_release_irq(sdiodev->func1);
-		sdio_release_host(sdiodev->func1);
+		brcmf_sdio_release_host(sdiodev->func1);
 		sdiodev->sd_irq_requested = false;
 	}
 }
@@ -683,7 +694,7 @@ brcmf_sdiod_ramrw(struct brcmf_sdio_dev *sdiodev, bool write, u32 address,
 	else
 		dsize = size;
 
-	sdio_claim_host(sdiodev->func1);
+	brcmf_sdio_claim_host(sdiodev->func1);
 
 	/* Do the transfer(s) */
 	while (size) {
@@ -730,7 +741,7 @@ brcmf_sdiod_ramrw(struct brcmf_sdio_dev *sdiodev, bool write, u32 address,
 
 	dev_kfree_skb(pkt);
 
-	sdio_release_host(sdiodev->func1);
+	brcmf_sdio_release_host(sdiodev->func1);
 
 	return err;
 }
@@ -812,20 +823,20 @@ static int brcmf_sdiod_freezer_on(struct brcmf_sdio_dev *sdiodev)
 	sdiodev->freezer->frozen_count = 0;
 	reinit_completion(&sdiodev->freezer->resumed);
 	atomic_set(&sdiodev->freezer->freezing, 1);
-	brcmf_sdio_trigger_dpc(sdiodev->bus);
+	brcmf_sdio_freeze(sdiodev->bus);
 	wait_event(sdiodev->freezer->thread_freeze,
 		   atomic_read(expect) == sdiodev->freezer->frozen_count);
-	sdio_claim_host(sdiodev->func1);
+	brcmf_sdio_claim_host(sdiodev->func1);
 	res = brcmf_sdio_sleep(sdiodev->bus, true);
-	sdio_release_host(sdiodev->func1);
+	brcmf_sdio_release_host(sdiodev->func1);
 	return res;
 }
 
 static void brcmf_sdiod_freezer_off(struct brcmf_sdio_dev *sdiodev)
 {
-	sdio_claim_host(sdiodev->func1);
+	brcmf_sdio_claim_host(sdiodev->func1);
 	brcmf_sdio_sleep(sdiodev->bus, false);
-	sdio_release_host(sdiodev->func1);
+	brcmf_sdio_release_host(sdiodev->func1);
 	atomic_set(&sdiodev->freezer->freezing, 0);
 	complete_all(&sdiodev->freezer->resumed);
 }
@@ -875,14 +886,14 @@ int brcmf_sdiod_remove(struct brcmf_sdio_dev *sdiodev)
 	brcmf_sdiod_freezer_detach(sdiodev);
 
 	/* Disable Function 2 */
-	sdio_claim_host(sdiodev->func2);
+	brcmf_sdio_claim_host(sdiodev->func2);
 	sdio_disable_func(sdiodev->func2);
-	sdio_release_host(sdiodev->func2);
+	brcmf_sdio_release_host(sdiodev->func2);
 
 	/* Disable Function 1 */
-	sdio_claim_host(sdiodev->func1);
+	brcmf_sdio_claim_host(sdiodev->func1);
 	sdio_disable_func(sdiodev->func1);
-	sdio_release_host(sdiodev->func1);
+	brcmf_sdio_release_host(sdiodev->func1);
 
 	sg_free_table(&sdiodev->sgtable);
 	sdiodev->sbwad = 0;
@@ -904,12 +915,12 @@ int brcmf_sdiod_probe(struct brcmf_sdio_dev *sdiodev)
 	int ret = 0;
 	unsigned int f2_blksz = SDIO_FUNC2_BLOCKSIZE;
 
-	sdio_claim_host(sdiodev->func1);
+	brcmf_sdio_claim_host(sdiodev->func1);
 
 	ret = sdio_set_block_size(sdiodev->func1, SDIO_FUNC1_BLOCKSIZE);
 	if (ret) {
 		brcmf_err("Failed to set F1 blocksize\n");
-		sdio_release_host(sdiodev->func1);
+		brcmf_sdio_release_host(sdiodev->func1);
 		goto out;
 	}
 	switch (sdiodev->func2->device) {
@@ -931,7 +942,7 @@ int brcmf_sdiod_probe(struct brcmf_sdio_dev *sdiodev)
 	ret = sdio_set_block_size(sdiodev->func2, f2_blksz);
 	if (ret) {
 		brcmf_err("Failed to set F2 blocksize\n");
-		sdio_release_host(sdiodev->func1);
+		brcmf_sdio_release_host(sdiodev->func1);
 		goto out;
 	} else {
 		brcmf_dbg(SDIO, "set F2 blocksize to %d\n", f2_blksz);
@@ -942,7 +953,7 @@ int brcmf_sdiod_probe(struct brcmf_sdio_dev *sdiodev)
 
 	/* Enable Function 1 */
 	ret = sdio_enable_func(sdiodev->func1);
-	sdio_release_host(sdiodev->func1);
+	brcmf_sdio_release_host(sdiodev->func1);
 	if (ret) {
 		brcmf_err("Failed to enable F1: err=%d\n", ret);
 		goto out;
@@ -1059,6 +1070,7 @@ static int brcmf_ops_sdio_probe(struct sdio_func *func,
 	dev_set_drvdata(&func->dev, bus_if);
 	dev_set_drvdata(&sdiodev->func1->dev, bus_if);
 	sdiodev->dev = &sdiodev->func1->dev;
+	bus_if->sdio_claims = 0;
 
 	brcmf_sdiod_change_state(sdiodev, BRCMF_SDIOD_DOWN);
 

@@ -176,8 +176,6 @@ struct brcmf_sdio_dev {
 	struct brcmf_mp_device *settings;
 	bool oob_irq_requested;
 	bool sd_irq_requested;
-	bool irq_en;			/* irq enable flags */
-	spinlock_t irq_en_lock;
 	bool sg_support;
 	uint max_request_size;
 	ushort max_segment_count;
@@ -377,6 +375,7 @@ void brcmf_sdio_isr(struct brcmf_sdio *bus, bool in_isr);
 void brcmf_sdio_wd_timer(struct brcmf_sdio *bus, bool active);
 void brcmf_sdio_wowl_config(struct device *dev, bool enabled);
 int brcmf_sdio_sleep(struct brcmf_sdio *bus, bool sleep);
-void brcmf_sdio_trigger_dpc(struct brcmf_sdio *bus);
-
+void brcmf_sdio_freeze(struct brcmf_sdio *bus);
+void brcmf_sdio_claim_host(struct sdio_func *func);
+void brcmf_sdio_release_host(struct sdio_func *func);
 #endif /* BRCMFMAC_SDIO_H */
