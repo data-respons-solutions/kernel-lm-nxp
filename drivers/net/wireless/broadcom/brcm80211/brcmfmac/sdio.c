@@ -451,12 +451,17 @@ struct brcmf_sdio {
 	uint roundup;		/* Max roundup limit */
 	bool fcstate;		/* Flow control */
 	struct pktq txq;	/* Queue length used for flow-control */
+	struct sk_buff *tx_ctl_skb;
+	bool tx_ctl_pending;
+	atomic_t tx_data_pending;
+	struct completion tx_complete;
 	u8 flowcontrol;	/* per prio flow control bitmask */
 	u8 tx_seq;		/* Transmit sequence number (next) */
 	u8 tx_max;		/* Maximum transmit sequence allowed */
-	struct mutex tx_mutex;
 	ktime_t credit_time;	/* Credit renewed time */
-	wait_queue_head_t tx_wq;
+	struct task_struct *tx_task;
+	wait_queue_head_t tx_wait;
+	wait_queue_head_t tx_credits_wait;
 
 	u8 *hdrbuf;		/* buffer for handling rx frame */
 	u8 *rxhdr;		/* Header of current rx frame (in hdrbuf) */
@@ -503,7 +508,6 @@ struct brcmf_sdio {
 
 	struct workqueue_struct *brcmf_wq;
 	struct work_struct rx_work;
-	struct work_struct tx_work;
 	atomic_t rx_triggered;
 	atomic_t tx_triggered;
 
@@ -653,7 +657,6 @@ static void pkt_align(struct sk_buff *p, int len, int align)
 
 static u8 tx_credits(struct brcmf_sdio *bus) {
 	u8 head, tail;
-	smp_mb();
 	head = READ_ONCE(bus->tx_max);
 	tail = READ_ONCE(bus->tx_seq);
 	return (u8)(head - tail);
@@ -1446,8 +1449,7 @@ static int brcmf_sdio_hdparse(struct brcmf_sdio *bus, u8 *header,
 	if (tx_seq_max != READ_ONCE(bus->tx_max)) {
 		bus->credit_time = ktime_get();
 		WRITE_ONCE(bus->tx_max, tx_seq_max);
-		smp_mb();
-		wake_up_all(&bus->tx_wq);
+		wake_up(&bus->tx_credits_wait);
 	}
 
 	return 0;
@@ -2267,61 +2269,38 @@ done:
 	return ret;
 }
 
-int16_t brcmf_sdio_sendfromq(struct brcmf_sdio *bus)
+int16_t brcmf_sdio_sendfromq(struct brcmf_sdio *bus, int num_pkts)
 {
 	struct sk_buff *pkt;
 	struct sk_buff_head pktq;
 	int ret = 0, prec_out, i;
 	uint cnt = 0;
 	u8 tx_prec_map, pkt_num;
-	unsigned credits, qlen, pkt_to_send;
 
-	brcmf_dbg(TRACE, "Enter\n");
 	tx_prec_map = ~bus->flowcontrol;
 
-	ret = mutex_lock_interruptible(&bus->tx_mutex);
-	if (ret < 0)
-		return ret;
-
-	credits = tx_credits(bus);
-	if (credits == 0) {
-		ret = wait_event_interruptible_timeout(
-			bus->tx_wq,
-			tx_credits(bus) > 2 && !READ_ONCE(bus->fcstate),
-			CTL_DONE_TIMEOUT);
-		if (ret == 0) {
-			mutex_unlock(&bus->tx_mutex);
-			return -ETIMEDOUT;
-		}
-		if (ret < 0) {
-			mutex_unlock(&bus->tx_mutex);
-			return ret;
-		}
-		credits = tx_credits(bus);
-	}
-	spin_lock_bh(&bus->txq_lock);
-	qlen = brcmu_pktq_mlen(&bus->txq, tx_prec_map);
-	spin_unlock_bh(&bus->txq_lock);
-
-	pkt_to_send = min_t(unsigned, credits > TXCTL_CREDITS ? credits - TXCTL_CREDITS : credits, qlen);
 	if (bus->txglom) {
-		spin_lock_bh(&bus->txq_lock);
-		pkt_num = min_t(u32, bus->sdiodev->txglomsz, pkt_to_send);
-		__skb_queue_head_init(&pktq);
-		for (i = 0; i < pkt_num; i++) {
-			pkt = brcmu_pktq_mdeq(&bus->txq, tx_prec_map,
-						&prec_out);
-			if (pkt == NULL)
-				break;
-			__skb_queue_tail(&pktq, pkt);
-		}
-		spin_unlock_bh(&bus->txq_lock);
-		ret = brcmf_sdio_txpkt(bus, &pktq, SDPCM_DATA_CHANNEL);
-		cnt = i;
-	} else {
-		while (cnt < pkt_to_send) {
+		while (cnt < num_pkts) {
 			spin_lock_bh(&bus->txq_lock);
-			pkt = brcmu_pktq_mdeq(&bus->txq, tx_prec_map, &prec_out);
+			pkt_num =
+				min_t(u32, bus->sdiodev->txglomsz, num_pkts - cnt);
+			__skb_queue_head_init(&pktq);
+			for (i = 0; i < pkt_num; i++) {
+				pkt = brcmu_pktq_mdeq(&bus->txq, tx_prec_map,
+						      &prec_out);
+				if (pkt == NULL)
+					break;
+				__skb_queue_tail(&pktq, pkt);
+			}
+			spin_unlock_bh(&bus->txq_lock);
+			ret = brcmf_sdio_txpkt(bus, &pktq, SDPCM_DATA_CHANNEL);
+			cnt += i;
+		}
+	} else {
+		while (cnt < num_pkts) {
+			spin_lock_bh(&bus->txq_lock);
+			pkt = brcmu_pktq_mdeq(&bus->txq, tx_prec_map,
+					      &prec_out);
 			if (pkt == NULL) {
 				spin_unlock_bh(&bus->txq_lock);
 				break;
@@ -2341,8 +2320,7 @@ int16_t brcmf_sdio_sendfromq(struct brcmf_sdio *bus)
 		WRITE_ONCE(bus->txoff, false);
 		brcmf_proto_bcdc_txflowblock(bus->sdiodev->dev, false);
 	}
-	mutex_unlock(&bus->tx_mutex);
-	return qlen - cnt;
+	return cnt;
 }
 
 static int brcmf_sdio_tx_ctrlframe(struct brcmf_sdio *bus, u8 *frame, u16 len)
@@ -2396,11 +2374,13 @@ static int brcmf_sdio_tx_ctrlframe(struct brcmf_sdio *bus, u8 *frame, u16 len)
 			   frame, min_t(u16, len, 16), "TxHdr:\n");
 
 	do {
+		sdio_claim_host(bus->sdiodev->func1);
 		ret = brcmf_sdiod_send_buf(bus->sdiodev, frame, len);
 		if (ret < 0)
 			brcmf_sdio_txfail(bus);
 		else
 			WRITE_ONCE(bus->tx_seq, (bus->tx_seq + 1) % SDPCM_SEQ_WRAP);
+		sdio_release_host(bus->sdiodev->func1);
 	} while (ret < 0 && retries++ < TXRETRIES);
 
 	return ret;
@@ -2538,7 +2518,7 @@ static bool brcmf_sdio_dpc(struct brcmf_sdio *bus)
 	bool pending_ops = false;
 	brcmf_dbg(SDIO, "Enter\n");
 	brcmf_sdio_claim_host(bus->sdiodev->func1);
-	intstatus = brcmf_sdio_intr_rstatus(bus);
+	intstatus = brcmf_sdio_intr_rstatus(bus) | bus->intstatus;
 	/* Handle flow-control change: read new state in case our ack
 	 * crossed another change interrupt.  If change still set, assume
 	 * FC ON for safety, let next loop through do the debounce.
@@ -2547,6 +2527,8 @@ static bool brcmf_sdio_dpc(struct brcmf_sdio *bus)
 		intstatus &= ~I_HMB_FC_CHANGE;
 		WRITE_ONCE(bus->fcstate, intstatus & I_HMB_FC_STATE ? true : false);
 		brcmf_info("Flow change to %d\n", bus->fcstate);
+		if (!bus->fcstate)
+			wake_up(&bus->tx_credits_wait);
 	}
 
 	/* Group do not care interrupts */
@@ -2572,6 +2554,7 @@ static bool brcmf_sdio_dpc(struct brcmf_sdio *bus)
 		} else
 			pending_ops = true;
 	}
+	bus->intstatus = intstatus;
 	brcmf_sdio_release_host(bus->sdiodev->func1);
 	brcmf_sdio_enable_irq(bus);
 
@@ -2662,6 +2645,7 @@ static int brcmf_sdio_bus_txdata(struct device *dev, struct sk_buff *pkt)
 	spin_lock_bh(&bus->txq_lock);
 	/* reset bus_flags in packet cb */
 	*(u16 *)(pkt->cb) = 0;
+	pkt->cb[2] = SDPCM_DATA_CHANNEL;
 	if (!brcmf_sdio_prec_enq(&bus->txq, pkt, prec)) {
 		skb_pull(pkt, bus->tx_hdrlen);
 		brcmf_err("out of bus->txq !!!\n");
@@ -2681,9 +2665,8 @@ static int brcmf_sdio_bus_txdata(struct device *dev, struct sk_buff *pkt)
 	if (pktq_plen(&bus->txq, prec) > qcount[prec])
 		qcount[prec] = pktq_plen(&bus->txq, prec);
 #endif
-
-	if (!atomic_xchg(&bus->tx_triggered, 1))
-		queue_work(bus->brcmf_wq, &bus->tx_work);
+	atomic_xchg(&bus->tx_data_pending, 1);
+	wake_up_interruptible(&bus->tx_wait);
 	return ret;
 }
 
@@ -2773,42 +2756,35 @@ brcmf_sdio_bus_txctl(struct device *dev, unsigned char *msg, uint msglen)
 	struct brcmf_bus *bus_if = dev_get_drvdata(dev);
 	struct brcmf_sdio_dev *sdiodev = bus_if->bus_priv.sdio;
 	struct brcmf_sdio *bus = sdiodev->bus;
-	int ret, credits;
+	int ret;
+	struct sk_buff *skb; 
 
 	brcmf_dbg(TRACE, "Enter\n");
 	if (sdiodev->state != BRCMF_SDIOD_DATA)
 		return -EIO;
+	
+	smp_mb();
+	if (READ_ONCE(bus->tx_ctl_pending))
+		return -EBUSY;
 
-	ret = mutex_lock_interruptible(&bus->tx_mutex);
-	if (ret < 0)
-		return ret;
-
-	credits = tx_credits(bus);
-	if (credits == 0) {
-		ret = wait_event_interruptible_timeout(bus->tx_wq, tx_credits(bus) > 0 && !READ_ONCE(bus->fcstate),
-					 CTL_DONE_TIMEOUT);
-		if (ret == 0) {
-			mutex_unlock(&bus->tx_mutex);
-			return -ETIMEDOUT;
-		}
-		if(ret < 0) {
-			mutex_unlock(&bus->tx_mutex);
-			return ret;
-		}
-		credits = tx_credits(bus);
+	skb = alloc_skb(msglen, GFP_KERNEL);
+	memcpy(skb->data, msg, msglen);
+	skb->cb[2] = SDPCM_CONTROL_CHANNEL;
+	reinit_completion(&bus->tx_complete);
+	WRITE_ONCE(bus->tx_ctl_skb, skb);
+	WRITE_ONCE(bus->tx_ctl_pending, 1);
+	wake_up_interruptible(&bus->tx_wait);
+	ret = wait_for_completion_interruptible_timeout(&bus->tx_complete, msecs_to_jiffies(2500));
+	if (ret == 0) {
+		brcmf_err("Timeout\n");
+		ret = -ETIMEDOUT;
 	}
-	brcmf_sdio_claim_host(bus->sdiodev->func1);
-	brcmf_sdio_ready(bus);
-	ret = brcmf_sdio_tx_ctrlframe(bus,  msg, msglen);
-	brcmf_sdio_release_host(bus->sdiodev->func1);
-
-	mutex_unlock(&bus->tx_mutex);
 	if (ret < 0) {
-		brcmf_err("Failed %d\n", ret);
 		bus->sdcnt.tx_ctlerrs++;
+		return ret;
 	}
 	bus->sdcnt.tx_ctlpkts++;
-	return ret;
+	return 0;
 }
 
 #ifdef DEBUG
@@ -3487,8 +3463,6 @@ static void brcmf_sdio_rx_worker(struct work_struct *work)
 {
 	bool pending = true;
 	struct brcmf_sdio *bus = container_of(work, struct brcmf_sdio, rx_work);
-	brcmf_sdio_dpc(bus);
-	return;
 	while (pending) {
 		pending = brcmf_sdio_dpc(bus);
 		if (pending)
@@ -3496,17 +3470,50 @@ static void brcmf_sdio_rx_worker(struct work_struct *work)
 	}
 }
 
-static void brcmf_sdio_tx_worker(struct work_struct *work)
+static int brcmf_sdio_tx_worker(void *data)
 {
-	int pending = 1;
-	struct brcmf_sdio *bus = container_of(work, struct brcmf_sdio,
-					      tx_work);
-	while (pending) {
-		atomic_xchg(&bus->tx_triggered, 0);
-		pending = brcmf_sdio_sendfromq(bus);
-		if (pending)
-			schedule();
+	int ret;
+	struct brcmf_sdio *bus = data;
+	brcmf_dbg(INFO, "Started TX thread\n");
+	while (!kthread_should_stop()) {
+		ret = wait_event_interruptible(
+			bus->tx_wait, atomic_read(&bus->tx_data_pending) ||
+					    READ_ONCE(bus->tx_ctl_pending));
+		if (ret < 0)
+			continue;
+
+		/* Control plane date? */
+		if (READ_ONCE(bus->tx_ctl_pending)) {
+			ret = brcmf_sdio_tx_ctrlframe(bus,
+						      bus->tx_ctl_skb->data,
+						      bus->tx_ctl_skb->len);
+			WRITE_ONCE(bus->tx_ctl_pending, 0);
+			kfree_skb(bus->tx_ctl_skb);
+			complete(&bus->tx_complete);
+		}
+
+		/* Ship netdev packets */
+		if (atomic_xchg(&bus->tx_data_pending, 0)) {
+			int pkts, tx_qlen, credits;
+			spin_lock_bh(&bus->txq_lock);
+			tx_qlen = brcmu_pktq_mlen(&bus->txq, ~bus->flowcontrol);
+			spin_unlock_bh(&bus->txq_lock);
+
+			ret = wait_event_interruptible_timeout(
+				bus->tx_credits_wait,
+				tx_credits(bus) > 2 && !bus->fcstate,
+				msecs_to_jiffies(1000));
+			if (ret == 0)
+				ret = -ETIMEDOUT;
+			if (ret < 0) {
+				brcmf_err("Error on tx credits wait %d\n", ret);
+				continue;
+			}
+			pkts = min_t(unsigned, credits, tx_qlen);
+			
+		}
 	}
+	return 0;
 }
 
 static void
@@ -4165,24 +4172,21 @@ struct brcmf_sdio *brcmf_sdio_probe(struct brcmf_sdio_dev *sdiodev)
 	}
 	brcmf_sdiod_freezer_count(sdiodev);
 	INIT_WORK(&bus->rx_work, brcmf_sdio_rx_worker);
-	INIT_WORK(&bus->tx_work, brcmf_sdio_tx_worker);
-	mutex_init(&bus->tx_mutex);
 	bus->brcmf_wq = wq;
-
-	/* attempt to attach to the dongle */
-	if (!(brcmf_sdio_probe_attach(bus))) {
-		brcmf_err("brcmf_sdio_probe_attach failed\n");
-		goto fail;
-	}
-
+	init_completion(&bus->tx_complete);
 	spin_lock_init(&bus->rxctl_lock);
 	spin_lock_init(&bus->txq_lock);
 	init_waitqueue_head(&bus->dcmd_resp_wait);
-	init_waitqueue_head(&bus->tx_wq);
+	init_waitqueue_head(&bus->tx_wait);
+	init_waitqueue_head(&bus->tx_credits_wait);
 
 	/* Initialize DPC thread */
 	atomic_set(&bus->rx_triggered, 0);
 
+	bus->tx_task = kthread_run(brcmf_sdio_tx_worker, bus, "brcmf-tx-worker");
+	if (IS_ERR(bus->tx_task)) {
+		brcmf_err("Failed to create tx thread\n");
+	}
 	/* default sdio bus header length for tx packet */
 	bus->tx_hdrlen = SDPCM_HWHDR_LEN + SDPCM_SWHDR_LEN;
 
@@ -4190,6 +4194,11 @@ struct brcmf_sdio *brcmf_sdio_probe(struct brcmf_sdio_dev *sdiodev)
 	bus->blocksize = bus->sdiodev->func2->cur_blksize;
 	bus->roundup = min(max_roundup, bus->blocksize);
 
+	/* attempt to attach to the dongle */
+	if (!(brcmf_sdio_probe_attach(bus))) {
+		brcmf_err("brcmf_sdio_probe_attach failed\n");
+		goto fail;
+	}
 	brcmf_sdio_claim_host(bus->sdiodev->func1);
 
 	/* Disable F2 to clear any intermediate frame state on the dongle */
@@ -4246,7 +4255,6 @@ void brcmf_sdio_remove(struct brcmf_sdio *bus)
 		brcmf_free(bus->sdiodev->dev);
 
 		cancel_work_sync(&bus->rx_work);
-		cancel_work_sync(&bus->tx_work);
 		if (bus->brcmf_wq)
 			destroy_workqueue(bus->brcmf_wq);
 
