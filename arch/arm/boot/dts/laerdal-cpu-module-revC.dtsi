@@ -384,7 +384,7 @@
 			};
 
 			vgen4_reg: vgen4 {
-				regulator-min-microvolt = <1800000>;
+				regulator-min-microvolt = <1500000>;
 				regulator-max-microvolt = <3300000>;
 				regulator-always-on;
 			};
@@ -607,6 +607,28 @@
 				MX6QDL_PAD_SD4_DAT3__SD4_DATA3      0x17059
 			>;
 		};
+
+		pinctrl_usdhc4_100mhz: usdhc4grp_100mhz {
+			fsl,pins = <
+				MX6QDL_PAD_SD4_CMD__SD4_CMD    0x170B1
+				MX6QDL_PAD_SD4_CLK__SD4_CLK    0x100B1
+				MX6QDL_PAD_SD4_DAT0__SD4_DATA0 0x170B1
+				MX6QDL_PAD_SD4_DAT1__SD4_DATA1 0x170B1
+				MX6QDL_PAD_SD4_DAT2__SD4_DATA2 0x170B1
+				MX6QDL_PAD_SD4_DAT3__SD4_DATA3 0x170B1
+			>;
+		};
+
+		pinctrl_usdhc4_200mhz: usdhc4grp_200mhz {
+			fsl,pins = <
+				MX6QDL_PAD_SD4_CMD__SD4_CMD    0x170F9
+				MX6QDL_PAD_SD4_CLK__SD4_CLK    0x100F9
+				MX6QDL_PAD_SD4_DAT0__SD4_DATA0 0x170F9
+				MX6QDL_PAD_SD4_DAT1__SD4_DATA1 0x170F9
+				MX6QDL_PAD_SD4_DAT2__SD4_DATA2 0x170F9
+				MX6QDL_PAD_SD4_DAT3__SD4_DATA3 0x170F9
+			>;
+		};
 	};
 
 	audmux {
@@ -781,20 +803,23 @@
 
 &usdhc4 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usdhc4 &pinctrl_wifi1>;
+	pinctrl-0 = <&pinctrl_usdhc4_100mhz &pinctrl_wifi1>;
 	bus-width = <4>;
 	non-removable;
-	no-1-8-v;
+	/* no-1-8-v; */
 	keep-power-in-suspend;
 	/delete-property/ enable-sdio-wakeup;
 	status = "okay";
 	pm-ignore-notify;
-	cap-power-off-card;
 	vmmc-supply = <&sw2_reg>;
-	voltage-ranges = <3300 3300>;
+	vqmmc-supply = <&vgen4_reg>;
+	voltage-ranges = <1800 3300>;
 
-	brcmf: bcrmf@1 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	brcmf: wifi@1 {
 		compatible = "brcm,bcm4329-fmac";
+		reg = <1>;
 		interrupt-parent = <&gpio2>;
 		interrupts = <6 IRQ_TYPE_LEVEL_LOW>;
 		interrupt-names = "host-wake";
