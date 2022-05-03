@@ -128,7 +128,7 @@
 		};
 
 	};
-
+/*
 	user-gpios {
 		gpio-spinor-wp {
 			gpios = <&gpio3 20 GPIO_ACTIVE_HIGH>;
@@ -198,9 +198,8 @@
 			status = "okay";
 			value = <0>;
 		};
-
 	};
-
+*/
 
 	leds {
 		compatible = "gpio-leds";
@@ -300,6 +299,47 @@
 	};
 };
 
+&gpio1 {
+	gpio-line-names = "", "", "", "", "", "", "", "",
+		"", "", "", "", "", "", "", "",
+		"", "", "", "", "", "", "", "",
+		"", "", "", "", "", "", "", "";
+};
+
+&gpio2 {
+	gpio-line-names = "", "", "", "", "", "", "", "",
+		"", "", "", "", "", "", "", "",
+		"", "gpio_pwm3", "", "gpio_pwm2", "", "", "", "",
+		"", "", "", "", "", "", "", "";
+
+	wlan_dev_wake {
+		gpio-hog;
+		gpios = <7 GPIO_ACTIVE_HIGH>;
+		output-high;
+	};
+};
+
+&gpio3 {
+	gpio-line-names = "", "", "", "", "", "", "", "",
+		"", "", "", "", "", "", "", "",
+		"", "", "", "", "spinor_wp", "can_termination", "", "",
+		"", "", "", "hwrev0", "hwrev1", "", "", "";
+};
+
+&gpio4 {
+	gpio-line-names = "", "", "", "", "", "", "", "",
+		"", "", "hwrev2", "", "", "", "", "",
+		"", "", "", "", "", "", "", "",
+		"", "", "mcu_reset", "mcu_boot0", "mcu_boot1", "", "", "";
+};
+
+&gpio5 {
+	gpio-line-names = "", "", "", "", "", "", "", "",
+		"", "", "", "", "", "", "", "",
+		"", "", "", "", "", "ddr_setting", "", "",
+		"", "", "", "", "", "", "", "";
+};
+
 &esai {
 	compatible = "fsl,imx35-esai";
 	pinctrl-names = "default";
@@ -309,7 +349,7 @@
 
 &ecspi1 {
 	fsl,spi-num-chipselects = <1>;
-	cs-gpios = <&gpio3 19 0>;
+	cs-gpios = <&gpio3 19 GPIO_ACTIVE_LOW>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi1>;
 	status = "okay";
@@ -573,7 +613,6 @@
 				MX6QDL_PAD_KEY_ROW2__GPIO4_IO11     0x80000000      /* VCC_5V_EN (system 5v) */
 				MX6QDL_PAD_KEY_ROW4__GPIO4_IO15     0x80000000      /* CLR_STATUS */
 				MX6QDL_PAD_GPIO_0__CCM_CLKO1        0x000130b0      /* External audio clk */
-				MX6QDL_PAD_GPIO_1__WDOG2_B          0x80000000
 				MX6QDL_PAD_GPIO_5__GPIO1_IO05       0x80000000      /* SPK_SD_N */
 				MX6QDL_PAD_GPIO_9__GPIO1_IO09       0x0001b000      /* HP_DET, pullup */
 				MX6QDL_PAD_GPIO_18__GPIO7_IO13      0x0001b0b1      /* Mic detect, pullup */

@@ -142,7 +142,7 @@
 		status = "okay";
 	};
 
-
+/*
 	user-gpios {
 		gpio-lcd-flip-h {
 			gpios = <&gpio1 7 GPIO_ACTIVE_HIGH>;
@@ -174,7 +174,7 @@
 			value = <1>;
 		};
 	};
-
+*/
     lcd@0 {
         compatible = "fsl,lcd";
         ipu_id = <0>;
@@ -246,6 +246,45 @@
 	};
 };
 
+&gpio1 {
+	flip_h {
+		gpio-hog;
+		gpios = <7 GPIO_ACTIVE_HIGH>;
+		output-low;
+	};
+
+	flip_v {
+		gpio-hog;
+		gpios = <8 GPIO_ACTIVE_HIGH>;
+		output-high;
+	};
+};
+
+&gpio2 {
+	gpio-wlan-dev-wake {
+		gpio-hog;
+		gpios = <7 GPIO_ACTIVE_HIGH>;
+		outputh-high;
+	};
+};
+
+&gpio3 {
+	gpio-line-names = "", "", "", "", "", "", "", "",
+		"", "", "", "", "", "", "", "",
+		"", "", "", "", "spinor-wp", "", "", "chg_iset",
+		"", "", "", "hwrev0", "hwrev1";
+};
+
+&gpio4 {
+	gpio-line-names = "", "", "", "", "", "", "", "",
+		"", "", "", "hwrev2", "", "chg_nce";
+
+	gpio-touch-rst {
+		gpio-hog;
+		gpios = <10 GPIO_ACTIVE_HIGH>;
+		output-high;
+	};
+};
 
 &ecspi1 {
 	fsl,spi-num-chipselects = <1>;
@@ -314,12 +353,11 @@
 };
 
 &wdog1 {
-	status = "disabled";
+	status = "okay";
 };
 
 &wdog2 {
-	pinctrl-names = "default";
-	status = "okay";
+	status = "disabled";
 };
 
 &i2c4 {
@@ -504,7 +542,8 @@
 				MX6QDL_PAD_GPIO_4__GPIO1_IO04       0x0001b000      /* Function key (active low, pullup) */
 				MX6QDL_PAD_KEY_COL2__GPIO4_IO10     0x80000000      /* Touch reset (low)    */
 				MX6QDL_PAD_KEY_ROW1__GPIO4_IO09     0x80000000      /* AUX_5V_EN */
-				MX6QDL_PAD_KEY_ROW4__GPIO4_IO15     0x00002051      /* CLR_STATUS */
+				MX6QDL_PAD_KEY_ROW2__GPIO4_IO11     0x1b000         /* HW_Setting2 */
+				MX6QDL_PAD_KEY_ROW4__GPIO4_IO15     0x00002020      /* CLR_STATUS */
 				MX6QDL_PAD_KEY_COL4__GPIO4_IO14     0x1b0b1         /* GP--Charger_nCE */
 				MX6QDL_PAD_GPIO_0__CCM_CLKO1        0x130b0         /* External audio clk */
 				MX6QDL_PAD_GPIO_6__GPIO1_IO06       0x0001b040		/* Mic detect */

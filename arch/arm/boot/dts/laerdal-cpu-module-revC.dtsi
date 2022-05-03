@@ -96,6 +96,7 @@
 
 	};
 
+/*
 	user-gpios {
 		gpio-spinor-wp {
 			gpios = <&gpio3 20 GPIO_ACTIVE_HIGH>;
@@ -117,7 +118,6 @@
 			gpios = <&gpio4 23 GPIO_ACTIVE_HIGH>;
 			status = "okay";
 		};
-
 
 		gpio-can1-sdn {
 			gpios = <&gpio4 10 GPIO_ACTIVE_HIGH>;
@@ -173,7 +173,7 @@
 			value = <1>;
 		};
 	};
-
+*/
 
 	leds {
 		compatible = "gpio-leds";
@@ -213,6 +213,81 @@
 	};
 
 };
+
+&gpio1 {
+	gpio-line-names = "", "", "", "", "", "speaker_enable", "", "",
+		"", "", "", "", "", "", "", "",
+		"", "", "", "", "", "", "", "",
+		"", "", "", "", "", "", "", "";
+};
+
+&gpio2 {
+	gpio-line-names = "", "", "", "", "", "", "", "",
+		"", "", "", "", "", "", "", "",
+		"", "", "", "", "", "", "", "",
+		"", "", "", "", "", "", "", "";
+	wlan_dev_wake {
+		gpio-hog;
+		gpios = <7 GPIO_ACTIVE_HIGH>;
+		output-high;
+	};
+};
+
+&gpio3 {
+	gpio-line-names = "", "", "", "", "", "", "", "",
+		"", "", "", "", "", "", "", "",
+		"", "", "", "", "spinor_wp", "", "", "",
+		"", "", "", "", "", "", "", "can1_resen";
+	
+/*
+	can1_resen {
+		gpio-hog;
+		gpios = <31 GPIO_ACTIVE_HIGH>;
+		output-low;
+	};
+*/
+};
+
+&gpio4 {
+	gpio-line-names = "", "", "", "", "", "audio_d2", "can2_sdn", "can2_stb",
+		"", "", "can1_sd", "can1_stb", "", "", "", "",
+		"", "", "", "", "", "hwrev2", "hwrev1", "hwrev0",
+		"", "", "", "", "", "", "", "";
+
+/*
+	gpio_can2_sdn {
+		gpio-hog;
+		gpios = <6 GPIO_ACTIVE_HIGH>;
+		output-low;
+	};
+
+	gpio_can2_stb {
+		gpio-hog;
+		gpios = <7 GPIO_ACTIVE_HIGH>;
+		output-low;
+	};
+
+	gpio_can1_sdn {
+		gpio-hog;
+		gpios = <10 GPIO_ACTIVE_HIGH>;
+		output-low;
+	};
+	
+	gpio_can1_stb {
+		gpio-hog;
+		gpios = <11 GPIO_ACTIVE_HIGH>;
+		output-low;
+	};
+*/
+};
+
+&gpio7 {
+	gpio-line-names = "", "", "", "", "", "", "", "",
+		"", "", "", "", "", "audio_d1", "", "",
+		"", "", "", "", "", "", "", "",
+		"", "", "", "", "", "", "", "";
+};
+
 
 &ecspi1 {
 	fsl,spi-num-chipselects = <1>;
@@ -803,17 +878,16 @@
 
 &usdhc4 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usdhc4_100mhz &pinctrl_wifi1>;
+	pinctrl-0 = <&pinctrl_usdhc4 &pinctrl_wifi1>;
 	bus-width = <4>;
 	non-removable;
-	/* no-1-8-v; */
 	keep-power-in-suspend;
 	/delete-property/ enable-sdio-wakeup;
 	status = "okay";
 	pm-ignore-notify;
 	vmmc-supply = <&sw2_reg>;
-	vqmmc-supply = <&vgen4_reg>;
-	voltage-ranges = <1800 3300>;
+	vqmmc-supply = <&sw2_reg>;
+	voltage-ranges = <3300 3300>;
 
 	#address-cells = <1>;
 	#size-cells = <0>;
@@ -838,7 +912,7 @@
 
 
 &pwm1 {
-	status = "dsiabled";
+	status = "disabled";
 };
 
 &pwm2 {
