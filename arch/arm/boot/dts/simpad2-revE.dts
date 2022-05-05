@@ -1,0 +1,52 @@
+/*
+ * Copyright DATA RESPONS AS
+ *
+ * The code contained herein is licensed under the GNU General Public
+ * License. You may obtain a copy of the GNU General Public License
+ * Version 2 or later at the following locations:
+ *
+ * http://www.opensource.org/licenses/gpl-license.html
+ * http://www.gnu.org/copyleft/gpl.html
+ */
+/dts-v1/;
+
+#include "simpad2-common.dtsi"
+#include <dt-bindings/net/qca-ar803x.h>
+
+/ {
+	model = "Laerdal Medical SIMPAD PLUS (REV E)";
+	compatible = "datarespons,imx6", "fsl,imx6dl";
+};
+
+
+&fec {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_enet_lm>;
+	phy-mode = "rgmii-id";
+	phy-reset-gpios = <&gpio1 25 GPIO_ACTIVE_LOW>;
+	status = "okay";
+	phy-handle = <&miphy>;
+	phy-supply = <&vgen3_reg>;
+    txen-skew-ps = <0>;
+	txc-skew-ps = <3000>;
+	rxdv-skew-ps = <0>;
+	rxc-skew-ps = <3000>;
+	rxd0-skew-ps = <0>;
+	rxd1-skew-ps = <0>;
+	rxd2-skew-ps = <0>;
+	rxd3-skew-ps = <0>;
+	txd0-skew-ps = <0>;
+	txd1-skew-ps = <0>;
+	txd2-skew-ps = <0>;
+	txd3-skew-ps = <0>;
+	mdio {
+	   #address-cells = <1>;
+       #size-cells = <0>;
+	   miphy: ethernet-phy@1 {
+	       compatible = "ethernet-phy-ieee802.3-c22";
+	       reg = <0x1>;
+	       interrupt-parent = <&gpio1>;
+	       interrupts = <26 IRQ_TYPE_LEVEL_LOW>;
+	   };
+	};
+};

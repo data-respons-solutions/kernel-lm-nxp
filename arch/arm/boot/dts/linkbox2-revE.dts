@@ -11,12 +11,12 @@
 
 /dts-v1/;
 
+
 #include "linkbox2-common.dtsi"
 
 / {
-	model = "Laerdal Medical LINKBOX PLUS (REV D)";
+	model = "Laerdal Medical LINKBOX PLUS (REV E)";
 	compatible = "datarespons,imx6", "fsl,imx6dl";
-
 };
 
 &fec {
@@ -25,17 +25,28 @@
 	phy-mode = "rgmii-id";
 	phy-reset-gpios = <&gpio1 25 GPIO_ACTIVE_LOW>;
 	status = "okay";
-	phy-supply = <&vgen6_reg>;
-	phy-handle = <&arphy>;
+	phy-handle = <&miphy>;
+	phy-supply = <&sw2_reg>;
+	txen-skew-ps = <0>;
+	txc-skew-ps = <3000>;
+	rxdv-skew-ps = <0>;
+	rxc-skew-ps = <3000>;
+	rxd0-skew-ps = <0>;
+	rxd1-skew-ps = <0>;
+	rxd2-skew-ps = <0>;
+	rxd3-skew-ps = <0>;
+	txd0-skew-ps = <0>;
+	txd1-skew-ps = <0>;
+	txd2-skew-ps = <0>;
+	txd3-skew-ps = <0>;
 	mdio {
 	   #address-cells = <1>;
-	   #size-cells = <0>;
-	   arphy: ethernet-phy@0 {
-		   compatible = "ethernet-phy-ieee802.3-c22";
-		   reg = <0x0>;
-		   max-speed = <100>;
-		   interrupt-parent = <&gpio1>;
-		   interrupts = <26 IRQ_TYPE_EDGE_FALLING>;
+       #size-cells = <0>;
+	   miphy: ethernet-phy@1 {
+	       compatible = "ethernet-phy-ieee802.3-c22";
+	       reg = <0x1>;
+	       interrupt-parent = <&gpio1>;
+	       interrupts = <26 IRQ_TYPE_LEVEL_LOW>;
 	   };
 	};
 };
