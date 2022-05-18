@@ -277,7 +277,7 @@
 
 &gpio4 {
 	gpio-line-names = "", "", "", "", "", "", "", "",
-		"", "", "", "hwrev2", "", "chg_nce";
+		"", "", "", "hwrev2", "", "", "chg_nce";
 
 	gpio-touch-rst {
 		gpio-hog;
@@ -517,7 +517,7 @@
 		};
 
 	bq27x00-battery@55 {
-		compatible = "ti,bq27500";
+		compatible = "dr,bq27simpad";
 		reg = <0x55>;
 		status = "okay";
 	};
@@ -544,7 +544,7 @@
 				MX6QDL_PAD_KEY_ROW1__GPIO4_IO09     0x80000000      /* AUX_5V_EN */
 				MX6QDL_PAD_KEY_ROW2__GPIO4_IO11     0x1b000         /* HW_Setting2 */
 				MX6QDL_PAD_KEY_ROW4__GPIO4_IO15     0x00002020      /* CLR_STATUS */
-				MX6QDL_PAD_KEY_COL4__GPIO4_IO14     0x1b0b1         /* GP--Charger_nCE */
+				MX6QDL_PAD_KEY_COL4__GPIO4_IO14     0x20            /* Charger_CE */
 				MX6QDL_PAD_GPIO_0__CCM_CLKO1        0x130b0         /* External audio clk */
 				MX6QDL_PAD_GPIO_6__GPIO1_IO06       0x0001b040		/* Mic detect */
 				MX6QDL_PAD_GPIO_7__GPIO1_IO07       0x80000000      /* LCD flip H */
@@ -559,7 +559,7 @@
 				MX6QDL_PAD_NANDF_D4__GPIO2_IO04     0x00000060      /* BT_REG_ON (Bluetooth power) */
 				MX6QDL_PAD_EIM_A25__GPIO5_IO02      0x0001b000      /* Recovery_setting (control boot) */
 				MX6QDL_PAD_EIM_D20__GPIO3_IO20      0x80000000      /* GP--nWP--flash (SPI flash WP) */
-				MX6QDL_PAD_EIM_D23__GPIO3_IO23      0x1b0b1        /* GP--CHarger_ISET */
+				MX6QDL_PAD_EIM_D23__GPIO3_IO23      0x20            /* GP--CHarger_ISET */
 				MX6QDL_PAD_EIM_D26__GPIO3_IO26      0x00000060      /* GP--WL_BAT_PWR_EN */
 				MX6QDL_PAD_EIM_D27__GPIO3_IO27      0x0001b000      /* HW_Setting_0 */
 				MX6QDL_PAD_EIM_D28__GPIO3_IO28      0x0001b000      /* HW_Setting_1 */
