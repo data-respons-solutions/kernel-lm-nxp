@@ -20,6 +20,7 @@ enum bq27xxx_chip {
 	BQ27530, /* bq27530, bq27531 */
 	BQ27531,
 	BQ27541, /* bq27541, bq27542, bq27546, bq27742 */
+	BQ27541G1,
 	BQ27542,
 	BQ27546,
 	BQ27742,
@@ -34,6 +35,7 @@ enum bq27xxx_chip {
 	BQ28Z610,
 	BQ34Z100,
 	BQ78Z100,
+	BQ27_SIMPAD,
 };
 
 struct bq27xxx_device_info;
@@ -55,6 +57,7 @@ struct bq27xxx_reg_cache {
 	int energy;
 	int flags;
 	int health;
+	int soh;
 };
 
 struct bq27xxx_device_info {
