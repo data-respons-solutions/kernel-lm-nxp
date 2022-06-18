@@ -1,0 +1,118 @@
+// SPDX-License-Identifier: (GPL-2.0 OR MIT)
+/*
+ * Copyright 2017 NXP
+ * Copyright (C) 2017-2018 Pengutronix, Lucas Stach <kernel@pengutronix.de>
+ */
+
+/dts-v1/;
+
+#include "imx8mp-evk.dts"
+
+/ {
+	model = "NXP i.MX8MPlus EVK board DR version";
+	aliases {
+		mmc0 = &usdhc3;
+		mmc1 = &usdhc2;
+		btserial = "ttymxc0";
+	};
+
+	modem_reset: modem-reset {
+		compatible = "gpio-reset";
+		reset-gpios = <&pca6416 7 GPIO_ACTIVE_LOW>;
+		reset-delay-us = <2000>;
+		reset-post-delay-ms = <40>;
+		#reset-cells = <0>;
+	};
+
+	eqos_reset: ethphy-reset {
+		compatible = "gpio-reset";
+		reset-gpios = <&gpio4 22 GPIO_ACTIVE_LOW>;
+		reset-delay-us = <2000>;
+		reset-post-delay-ms = <40>;
+		#reset-cells = <0>;
+	};
+};
+
+&iomuxc {
+	pinctrl_uart1_bt: uart1grpbt {
+		fsl,pins = <
+			MX8MP_IOMUXC_UART1_RXD__UART1_DCE_RX	0x149
+			MX8MP_IOMUXC_UART1_TXD__UART1_DCE_TX	0x149
+			MX8MP_IOMUXC_UART3_RXD__UART1_DCE_CTS	0x149
+			MX8MP_IOMUXC_UART3_TXD__UART1_DCE_RTS	0x149
+			MX8MP_IOMUXC_SD1_DATA6__GPIO2_IO08		0x1C1
+		>;
+	};
+};
+
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		partition@0 {
+			label = "barebox-environment-qspi";
+			reg = <0x0 0x200000>;
+		};
+
+		backend_state_qspi: state@200000 {
+			label = "barebox-state";
+			reg = <0x200000 0x200000>;
+		};
+
+		partition@400000 {
+			label = "system_a";
+			reg = <0x400000 0x40000>;
+		};
+		partition@440000 {
+			label = "system_b";
+			reg = <0x440000 0x40000>;
+		};
+
+		partition@480000 {
+			label = "user_a";
+			reg = <0x480000 0x40000>;
+		};
+		partition@4c0000 {
+			label = "user_b";
+			reg = <0x4c0000 0x40000>;
+		};
+	};
+};
+
+&usdhc3 {
+	partitions {
+		compatible = "fixed-partitions";
+		#size-cells = <1>;
+		#address-cells = <1>;
+
+		partition@0 {
+			label = "barebox";
+			reg = <0x0 0xe0000>;
+		};
+
+		partition@e0000 {
+			label = "barebox-environment";
+			reg = <0xe0000 0x20000>;
+		};
+
+		backend_state_usdhc: partition@100000 {
+			reg = <0x100000 0x100000>;
+			label = "state-emmc";
+		};
+	};
+};
+
+&uart1 {
+	pinctrl-0 = <&pinctrl_uart1_bt>;
+};
+
+&fec {
+	phy-reset_gpios = <&gpio4 2 GPIO_ACTIVE_LOW>;
+};
+
+&eqos {
+	reset-names = "stmmaceth";
+	resets = <&eqos_reset>;
+};
