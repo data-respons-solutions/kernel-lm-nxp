@@ -5,7 +5,7 @@
  * Copyright (c) StreamUnlimited GmbH 2013
  *	Marek Belisko <marek.belisko@streamunlimited.com>
  */
-
+#define DEBUG
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/delay.h>
@@ -15,6 +15,7 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
+#include <linux/clk.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
@@ -79,7 +80,32 @@ struct pcm1681_private {
 	/* Current rate for deemphasis control */
 	unsigned int rate;
 	bool use_tdm;
+	struct clk *clk;
 };
+
+static int pcm1681_set_bias_level(struct snd_soc_component *component, enum snd_soc_bias_level level)
+{
+	int ret = 0;
+	struct pcm1681_private *priv = snd_soc_component_get_drvdata(component);
+	switch (level) {
+	case SND_SOC_BIAS_PREPARE:
+		switch (snd_soc_component_get_bias_level(component)) {
+		case SND_SOC_BIAS_STANDBY:
+			if (!IS_ERR(priv->clk))
+				ret = clk_prepare_enable(priv->clk);
+			break;
+		case SND_SOC_BIAS_ON:
+			if (!IS_ERR(priv->clk))
+				clk_disable_unprepare(priv->clk);
+			break;
+		default:
+			break;
+		}
+	default:
+		break;
+	}
+	return ret;
+}
 
 static const int pcm1681_deemph[] = { 44100, 48000, 32000 };
 
@@ -297,7 +323,8 @@ MODULE_DEVICE_TABLE(of, pcm1681_dt_ids);
 static const struct regmap_config pcm1681_regmap = {
 	.reg_bits		= 8,
 	.val_bits		= 8,
-	.max_register		= 0x13,
+	.max_register	= 0x13,
+	.cache_type 	= REGCACHE_NONE,
 	.reg_defaults		= pcm1681_reg_defaults,
 	.num_reg_defaults	= ARRAY_SIZE(pcm1681_reg_defaults),
 	.writeable_reg		= pcm1681_writeable_reg,
@@ -311,6 +338,7 @@ static const struct snd_soc_component_driver soc_component_dev_pcm1681 = {
 	.num_dapm_widgets	= ARRAY_SIZE(pcm1681_dapm_widgets),
 	.dapm_routes		= pcm1681_dapm_routes,
 	.num_dapm_routes	= ARRAY_SIZE(pcm1681_dapm_routes),
+	.set_bias_level		= pcm1681_set_bias_level,
 	.idle_bias_on		= 1,
 	.use_pmdown_time	= 1,
 	.endianness		= 1,
@@ -328,10 +356,17 @@ static int pcm1681_i2c_probe(struct i2c_client *client,
 {
 	int ret;
 	struct pcm1681_private *priv;
-
 	priv = devm_kzalloc(&client->dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
+	priv->clk = devm_clk_get(&client->dev, "mclk");
+	if (IS_ERR(priv->clk)) {
+		if (PTR_ERR(priv->clk) == -EPROBE_DEFER)
+			return -EPROBE_DEFER;
+	} else {
+		clk_prepare_enable(priv->clk);
+		dev_dbg(&client->dev, "Got mclk at rate %ld\n", clk_get_rate(priv->clk));
+	}
 
 	priv->regmap = devm_regmap_init_i2c(client, &pcm1681_regmap);
 	if (IS_ERR(priv->regmap)) {

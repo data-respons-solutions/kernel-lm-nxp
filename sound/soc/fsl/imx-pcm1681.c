@@ -11,7 +11,7 @@
  * http://www.opensource.org/licenses/gpl-license.html
  * http://www.gnu.org/copyleft/gpl.html
  */
-
+#define DEBUG
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/i2c.h>
@@ -87,7 +87,7 @@ static int imx_pcm1681_hw_param(struct snd_pcm_substream *substream,
 	u32 width = snd_pcm_format_width(params_format(params));
 	unsigned int clock_freq=0;
 	u32 codec_dai_format = SND_SOC_DAIFMT_LEFT_J | SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBS_CFS;
-	
+
 	ret = snd_soc_dai_set_fmt(codec_dai, codec_dai_format);
 	if (ret) {
 		dev_err(rtd->dev, "failed to set codec dai fmt: %d\n", ret);
@@ -169,7 +169,6 @@ static int imx_pcm1681_startup(struct snd_pcm_substream *substream)
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct imx_pcm1681_data *data = snd_soc_card_get_drvdata(rtd->card);
 	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
-	snd_soc_dai_set_sysclk(cpu_dai, 1, data->pll_freq, SND_SOC_CLOCK_OUT);
 	imx_pcm1681_set_amps(data, false);
 	return 0;
 }
@@ -201,7 +200,6 @@ static int imx_pcm1681_probe(struct platform_device *pdev)
 	int gpio_nr;
 	int nr_supplies;
 	const char *supply_name;
-	struct clk *sai_mclk;
 
 
 	cpu_np = of_parse_phandle(pdev->dev.of_node, "audio-cpu", 0);
@@ -244,9 +242,7 @@ static int imx_pcm1681_probe(struct platform_device *pdev)
 		dev_warn(&pdev->dev, "failed to get input clock from codec DT\n");
 	}
 	data->pll_freq = clk_get_rate(data->input_clk);
-	//of_property_read_u32(pdev->dev.of_node, "hfclk-freq", &data->pll_freq);
 	dev_info(&pdev->dev, "%s: PLL (HFTXC) = %d\n", __func__, data->pll_freq);
-	/* clk_set_rate(data->input_clk, data->pll_freq); */
 
 	sd_gpios = of_gpio_named_count(pdev->dev.of_node, "amp-shutdown-gpios");
 	for (n=0; n < sd_gpios; n++) {
