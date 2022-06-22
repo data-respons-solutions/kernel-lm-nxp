@@ -1,0 +1,70 @@
+/*
+ * Copyright 2015 DATA RESPONS AS
+ *
+ * The code contained herein is licensed under the GNU General Public
+ * License. You may obtain a copy of the GNU General Public License
+ * Version 2 or later at the following locations:
+ *
+ * http://www.opensource.org/licenses/gpl-license.html
+ * http://www.gnu.org/copyleft/gpl.html
+ */
+
+/dts-v1/;
+
+#include "imx6q.dtsi"
+#include "mxxf1-common.dtsi"
+
+/ {
+    model = "DR imx6q Maritime Computer - Midlife Upgrade";
+    compatible = "dr,mxxf1-hw4", "fsl,imx6q";
+};
+
+&i2c3 {
+    clock-frequency = <100000>;
+    pinctrl-names = "default";
+    pinctrl-0 = <&pinctrl_i2c3>;
+    status = "okay";
+
+    main_rtc: rtc@68 {
+        compatible = "stm,m41t82";
+        reg = <0x68>;
+        };
+
+    adc7417@28 {
+        compatible = "adi,ad7417";
+        reg = <0x28>;
+        };
+};
+
+&fec {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_enet_lm>;
+	phy-mode = "rgmii";
+	status = "okay";
+	phy-reset-duration = <10>;
+	phy-reset-gpios = <&gpio1 25 GPIO_ACTIVE_LOW>;
+	phy-handle = <&miphy>;
+	phy-supply = <&vgen3_reg>;
+    txen-skew-ps = <0>;
+	txc-skew-ps = <3000>;
+	rxdv-skew-ps = <0>;
+	rxc-skew-ps = <3000>;
+	rxd0-skew-ps = <0>;
+	rxd1-skew-ps = <0>;
+	rxd2-skew-ps = <0>;
+	rxd3-skew-ps = <0>;
+	txd0-skew-ps = <0>;
+	txd1-skew-ps = <0>;
+	txd2-skew-ps = <0>;
+	txd3-skew-ps = <0>;
+	mdio {
+	   #address-cells = <1>;
+       #size-cells = <0>;
+	   miphy: ethernet-phy@1 {
+	       compatible = "ethernet-phy-ieee802.3-c22";
+	       reg = <0x1>;
+	       interrupt-parent = <&gpio1>;
+	       interrupts = <28 IRQ_TYPE_LEVEL_LOW>;
+	   };
+	};
+};
