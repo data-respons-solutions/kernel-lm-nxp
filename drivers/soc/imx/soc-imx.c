@@ -23,12 +23,101 @@
 #define OCOTP_ULP_UID_3		0x4d0
 #define OCOTP_ULP_UID_4		0x4e0
 
+static u32 src_sbmr1, src_sbmr2;
+static ssize_t sbmr1_show(struct device *dev, struct device_attribute *attr,
+			  char *buf)
+{
+	return sprintf(buf, "%08x\n", src_sbmr1);
+}
+
+static ssize_t sbmr2_show(struct device *dev, struct device_attribute *attr,
+			  char *buf)
+{
+	return sprintf(buf, "%08x\n", src_sbmr2);
+}
+
+static ssize_t bootdev_show(struct device *dev, struct device_attribute *attr,
+			    char *buf)
+{
+	switch ((src_sbmr1 >> 3) & 0xf) {
+	case 0:
+	case 1:
+		return sprintf(buf, "EIM");
+		break;
+
+	case 4:
+	case 5:
+		return sprintf(buf, "SATA");
+		break;
+
+	case 6:
+	case 7:
+		return sprintf(buf, "SPI");
+		break;
+
+	case 8:
+	case 9:
+	case 0xa:
+	case 0xb:
+		return sprintf(buf, "SD");
+		break;
+
+	case 0xc:
+	case 0xd:
+	case 0xe:
+	case 0xf:
+		return sprintf(buf, "EMMC");
+		break;
+
+	default:
+		return sprintf(buf, "UNKNOWN");
+		break;
+	}
+}
+
+static ssize_t bootmode_show(struct device *dev, struct device_attribute *attr,
+			     char *buf)
+{
+	switch ((src_sbmr2 >> 24) & 0x3) {
+	case 0:
+		return sprintf(buf, "FUSES");
+		break;
+
+	case 1:
+		return sprintf(buf, "SERIAL-DOWNLOAD");
+		break;
+
+	case 2:
+		return sprintf(buf, "INTERNAL");
+		break;
+
+	default:
+		return sprintf(buf, "RESERVED");
+		break;
+	}
+}
+
+static DEVICE_ATTR_RO(sbmr1);
+static DEVICE_ATTR_RO(sbmr2);
+static DEVICE_ATTR_RO(bootdev);
+static DEVICE_ATTR_RO(bootmode);
+
+static struct attribute *sbmr_attrs[] = {
+	&dev_attr_sbmr1.attr,
+	&dev_attr_sbmr2.attr,
+	&dev_attr_bootdev.attr,
+	&dev_attr_bootmode.attr,
+	NULL,
+};
+
+ATTRIBUTE_GROUPS(sbmr);
+
 static int __init imx_soc_device_init(void)
 {
 	struct soc_device_attribute *soc_dev_attr;
 	const char *ocotp_compat = NULL;
 	struct soc_device *soc_dev;
-	struct device_node *root;
+	struct device_node *root, *np;
 	struct regmap *ocotp = NULL;
 	const char *soc_id;
 	u64 soc_uid = 0;
@@ -190,6 +279,17 @@ static int __init imx_soc_device_init(void)
 	if (!soc_dev_attr->serial_number) {
 		ret = -ENOMEM;
 		goto free_rev;
+	}
+
+	np = of_find_compatible_node(NULL, NULL, "fsl,imx6q-src");
+	if (np) {
+		void __iomem *src_base;
+		src_base = of_iomap(np, 0);
+		src_sbmr1 = readl_relaxed(src_base + 0x4);
+		src_sbmr2 = readl_relaxed(src_base + 0x1c);
+		pr_info("SRC_SBMR1=0x%08x, SRC_SBMR2=0x%08x\n", src_sbmr1,
+			src_sbmr2);
+		soc_dev_attr->custom_attr_group = sbmr_groups[0];
 	}
 
 	soc_dev = soc_device_register(soc_dev_attr);
