@@ -503,6 +503,13 @@ config UBOOT_BOOTCOUNT
 	  The U-Boot Bootcount driver allows to access the
 	  bootcounter through sysFS file.
 
+config PWM_BUZZER
+	tristate "PWM Buzzer for MXXF1"
+	default n
+	help
+		PWM Buzzer for MXXF1
+
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
