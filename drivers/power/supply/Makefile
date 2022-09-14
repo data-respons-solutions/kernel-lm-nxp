@@ -108,3 +108,5 @@ obj-$(CONFIG_BATTERY_ACER_A500)	+= acer_a500_battery.o
 obj-$(CONFIG_BATTERY_SURFACE)	+= surface_battery.o
 obj-$(CONFIG_CHARGER_SURFACE)	+= surface_charger.o
 obj-$(CONFIG_BATTERY_UG3105)	+= ug3105_battery.o
+obj-$(CONFIG_LINKBOX_PLUS_PSY) += linkbox-plus-psy.o
+obj-$(CONFIG_SIMPAD_PLUS_PSY) += simpad-plus-psy.o

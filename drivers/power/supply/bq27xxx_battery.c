@@ -1535,7 +1535,7 @@ static void bq27xxx_battery_set_config(struct bq27xxx_device_info *di,
 
 static void bq27xxx_battery_settings(struct bq27xxx_device_info *di)
 {
-	struct power_supply_battery_info info = {};
+	struct power_supply_battery_info *info;
 	unsigned int min, max;
 
 	if (power_supply_get_battery_info(di->bat, &info) < 0)
