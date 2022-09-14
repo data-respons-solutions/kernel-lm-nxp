@@ -909,5 +909,4 @@ config SIMPAD_PLUS_PSY
     help
         Say Y to enable Simpad Plus PSY
 
-
 endif # POWER_SUPPLY
