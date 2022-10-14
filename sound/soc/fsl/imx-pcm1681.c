@@ -87,8 +87,7 @@ static int imx_pcm1681_hw_param(struct snd_pcm_substream *substream,
 	u32 width = snd_pcm_format_width(params_format(params));
 	unsigned int clock_freq=0;
 	u32 codec_dai_format = SND_SOC_DAIFMT_LEFT_J | SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBS_CFS;
-	snd_soc_dai_set_sysclk(cpu_dai, ESAI_HCKT_EXTAL, data->pll_freq, SND_SOC_CLOCK_IN);
-	snd_soc_dai_set_sysclk(codec_dai, 0, data->pll_freq, SND_SOC_CLOCK_IN);
+	
 	ret = snd_soc_dai_set_fmt(codec_dai, codec_dai_format);
 	if (ret) {
 		dev_err(rtd->dev, "failed to set codec dai fmt: %d\n", ret);
@@ -135,7 +134,7 @@ static int imx_pcm1681_hw_param(struct snd_pcm_substream *substream,
 		break;
 	}
 
-	dev_dbg(rtd->dev, "%s: ESAI clock is %d\n", __func__, clock_freq);
+	dev_dbg(rtd->dev, "%s: SAI clock is %d\n", __func__, clock_freq);
 	ret = snd_soc_dai_set_tdm_slot(cpu_dai, (1 << ch)-1, 0x0, ch, slotw);
 	if (ret) {
 		dev_err(rtd->dev, "%s: failed to set cpu tdm fmt: %d\n", __func__, ret);
@@ -147,7 +146,6 @@ static int imx_pcm1681_hw_param(struct snd_pcm_substream *substream,
 		dev_err(rtd->dev, "%s: failed to set codec tdm fmt: %d\n", __func__, ret);
 		return ret;
 	}
-
 
 	return 0;
 }
@@ -170,6 +168,8 @@ static int imx_pcm1681_startup(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct imx_pcm1681_data *data = snd_soc_card_get_drvdata(rtd->card);
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	snd_soc_dai_set_sysclk(cpu_dai, 1, data->pll_freq, SND_SOC_CLOCK_OUT);
 	imx_pcm1681_set_amps(data, false);
 	return 0;
 }
@@ -201,39 +201,33 @@ static int imx_pcm1681_probe(struct platform_device *pdev)
 	int gpio_nr;
 	int nr_supplies;
 	const char *supply_name;
+	struct clk *sai_mclk;
 
 
-	cpu_np = of_parse_phandle(pdev->dev.of_node, "cpu-dai", 0);
+	cpu_np = of_parse_phandle(pdev->dev.of_node, "audio-cpu", 0);
 	if (!cpu_np) {
 		dev_err(&pdev->dev, "cpu dai phandle missing or invalid\n");
-		ret = -EINVAL;
+		ret = -ENODEV;
 		goto fail;
 	}
-
-	if (!strstr(cpu_np->name, "esai")) {
-		dev_err(&pdev->dev, "Supports only esai, not %s", cpu_np->name);
-		ret = -EINVAL;
-		goto fail;
-	}
-
 
 	codec_np = of_parse_phandle(pdev->dev.of_node, "audio-codec", 0);
 	if (!codec_np) {
 		dev_err(&pdev->dev, "phandle missing or invalid\n");
-		ret = -EINVAL;
+		ret = -ENODEV;
 		goto fail;
 	}
 
 	cpu_pdev = of_find_device_by_node(cpu_np);
 	if (!cpu_pdev) {
-		dev_err(&pdev->dev, "failed to find CPU platform device\n");
-		ret = -EINVAL;
+		dev_dbg(&pdev->dev, "failed to find CPU platform device - deferring\n");
+		ret = -EPROBE_DEFER;
 		goto fail;
 	}
 	codec_dev = of_find_i2c_device_by_node(codec_np);
 	if (!codec_dev || !codec_dev->dev.driver) {
-		dev_err(&pdev->dev, "failed to find codec platform device\n");
-		ret = -EINVAL;
+		dev_dbg(&pdev->dev, "failed to find codec platform device - deferring\n");
+		ret = -EPROBE_DEFER;
 		goto fail;
 	}
 
@@ -249,8 +243,8 @@ static int imx_pcm1681_probe(struct platform_device *pdev)
 		data->input_clk = 0;
 		dev_warn(&pdev->dev, "failed to get input clock from codec DT\n");
 	}
-
-	of_property_read_u32(pdev->dev.of_node, "hfclk-freq", &data->pll_freq);
+	data->pll_freq = clk_get_rate(data->input_clk);
+	//of_property_read_u32(pdev->dev.of_node, "hfclk-freq", &data->pll_freq);
 	dev_info(&pdev->dev, "%s: PLL (HFTXC) = %d\n", __func__, data->pll_freq);
 	/* clk_set_rate(data->input_clk, data->pll_freq); */
 
@@ -327,9 +321,7 @@ static int imx_pcm1681_probe(struct platform_device *pdev)
 				if (data->power[nr_supplies] == NULL)
 					dev_err(&pdev->dev, "Unable to get power %s\n", supply_name);
 			}
-
 		}
-
 	}
 	ret = snd_soc_register_card(&data->card);
 	if (ret) {
