@@ -27,8 +27,18 @@
 #include <sound/soc-dapm.h>
 #include <linux/pinctrl/consumer.h>
 #include "fsl_esai.h"
+#include "fsl_sai.h"
 
 #define DAI_NAME_SIZE	32
+
+enum cpu_type_id {CPUTYPE_IMX8, CPUTYPE_IMX6};
+
+struct board_variant {
+	enum cpu_type_id cpu_type;
+};
+
+const struct board_variant imx6_pcm1681 = { .cpu_type = CPUTYPE_IMX6 };
+const struct board_variant imx8_pcm1681 = { .cpu_type = CPUTYPE_IMX8 };
 
 struct pcm_gpio_info {
 	int gpio_nr;
@@ -43,10 +53,11 @@ struct imx_pcm1681_data {
 	char platform_name[DAI_NAME_SIZE];
 	struct pcm_gpio_info shutdown_gpios[8];
 	int num_shutdown_gpios;
-	u32 pll_freq;
-	struct clk *input_clk;
+	struct clk *codec_clk;
 	struct power_supply *power[2];
 	int nr_power;
+	const struct board_variant *board_info;
+	unsigned int clk_frequency;
 };
 
 static const struct snd_soc_dapm_widget imx_pcm1681_dapm_widgets[] = {
@@ -78,7 +89,6 @@ static int imx_pcm1681_hw_param(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
 	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
-	struct imx_pcm1681_data *data = snd_soc_card_get_drvdata(rtd->card);
 	unsigned int sample_rate = params_rate(params);
 	unsigned ch = params_channels(params);
 	snd_pcm_format_t sample_format = params_format(params);
@@ -168,7 +178,6 @@ static int imx_pcm1681_startup(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct imx_pcm1681_data *data = snd_soc_card_get_drvdata(rtd->card);
-	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
 	imx_pcm1681_set_amps(data, false);
 	return 0;
 }
@@ -186,6 +195,51 @@ static struct snd_soc_ops imx_hifi_ops = {
 	.shutdown = imx_pcm1681_shutdown,
 };
 
+static int imx_pcm1681_late_probe(struct snd_soc_card *card)
+{
+	int ret;
+	struct imx_pcm1681_data *data = snd_soc_card_get_drvdata(card);
+	struct snd_soc_pcm_runtime *rtd = list_first_entry(
+		&card->rtd_list, struct snd_soc_pcm_runtime, list);
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+
+	ret = clk_prepare_enable(data->codec_clk);
+	if (ret) {
+		dev_err(data->card.dev, "Failed to enable MCLK: %d\n", ret);
+		return ret;
+	}
+
+	switch (data->board_info->cpu_type) {
+	case CPUTYPE_IMX6:
+		break;
+
+	case CPUTYPE_IMX8:
+		dev_info(card->dev, "Set SAI mclk to %d\n", data->clk_frequency);
+		ret = snd_soc_dai_set_sysclk(cpu_dai, FSL_SAI_CLK_MAST1,
+					     data->clk_frequency,
+					     SND_SOC_CLOCK_OUT);
+		if (ret) {
+			dev_err(card->dev,
+				"failed to set codec sysclk: %d\n", ret);
+			goto out;
+		}
+		break;
+
+	default:
+		break;
+	}
+
+out:
+	clk_disable_unprepare(data->codec_clk);
+	return 0;
+}
+
+static const struct of_device_id imx_pcm1681_dt_ids[] = {
+	{ .compatible = "fsl,imx-audio-pcm1681", .data = &imx6_pcm1681},
+	{ .compatible = "fsl,imx-audio-mx8-pcm1681", .data = &imx8_pcm1681},
+	{ /* sentinel */ }
+};
+MODULE_DEVICE_TABLE(of, imx_pcm1681_dt_ids);
 
 static int imx_pcm1681_probe(struct platform_device *pdev)
 {
@@ -200,7 +254,11 @@ static int imx_pcm1681_probe(struct platform_device *pdev)
 	int gpio_nr;
 	int nr_supplies;
 	const char *supply_name;
-
+	const struct of_device_id *of_id = of_match_device(imx_pcm1681_dt_ids, &pdev->dev);
+	const struct board_variant *board_info = of_id ? (struct board_variant*)of_id->data : NULL;
+	if (!board_info) {
+		return -ENODATA;
+	}
 
 	cpu_np = of_parse_phandle(pdev->dev.of_node, "audio-cpu", 0);
 	if (!cpu_np) {
@@ -235,14 +293,14 @@ static int imx_pcm1681_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto fail;
 	}
-	data->pll_freq = 8192000;
-	data->input_clk = devm_clk_get(&codec_dev->dev, NULL);
-	if (IS_ERR(data->input_clk)) {
-		data->input_clk = 0;
+	data->board_info = board_info;
+	data->codec_clk = devm_clk_get(&codec_dev->dev, NULL);
+	if (IS_ERR(data->codec_clk)) {
+		data->codec_clk = 0;
 		dev_warn(&pdev->dev, "failed to get input clock from codec DT\n");
 	}
-	data->pll_freq = clk_get_rate(data->input_clk);
-	dev_info(&pdev->dev, "%s: PLL (HFTXC) = %d\n", __func__, data->pll_freq);
+	data->clk_frequency = clk_get_rate(data->codec_clk);
+	dev_info(&pdev->dev, "%s: PLL (HFTXC) = %d\n", __func__, data->clk_frequency);
 
 	sd_gpios = of_gpio_named_count(pdev->dev.of_node, "amp-shutdown-gpios");
 	for (n=0; n < sd_gpios; n++) {
@@ -299,6 +357,7 @@ static int imx_pcm1681_probe(struct platform_device *pdev)
 	data->card.dai_link = &data->dai;
 	data->card.dapm_widgets = imx_pcm1681_dapm_widgets;
 	data->card.num_dapm_widgets = ARRAY_SIZE(imx_pcm1681_dapm_widgets);
+	data->card.late_probe = imx_pcm1681_late_probe;
 
 	platform_set_drvdata(pdev, &data->card);
 	snd_soc_card_set_drvdata(&data->card, data);
@@ -327,6 +386,10 @@ static int imx_pcm1681_probe(struct platform_device *pdev)
 	}
 
 fail:
+	if (cpu_pdev)
+		put_device(&cpu_pdev->dev);
+	if (codec_dev)
+		put_device(&codec_dev->dev);
 	if (cpu_np)
 		of_node_put(cpu_np);
 	if (codec_np)
@@ -348,11 +411,7 @@ static int imx_pcm1681_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static const struct of_device_id imx_pcm1681_dt_ids[] = {
-	{ .compatible = "fsl,imx-audio-pcm1681", },
-	{ /* sentinel */ }
-};
-MODULE_DEVICE_TABLE(of, imx_pcm1681_dt_ids);
+
 
 static struct platform_driver imx_pcm1681_driver = {
 	.driver = {
