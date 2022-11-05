@@ -1937,13 +1937,13 @@ static int hp_event(struct snd_soc_dapm_widget *w,
 				    WM8962_HP1L_ENA_DLY | WM8962_HP1R_ENA_DLY |
 				    WM8962_HP1L_ENA_OUTP |
 				    WM8962_HP1R_ENA_OUTP, 0);
-				    
+
 		break;
 
 	default:
 		WARN(1, "Invalid event %d\n", event);
 		return -EINVAL;
-	
+
 	}
 
 	return 0;
@@ -3578,6 +3578,8 @@ static int wm8962_i2c_probe(struct i2c_client *i2c,
 		if (PTR_ERR(wm8962->pdata.mclk) == -EPROBE_DEFER)
 			return -EPROBE_DEFER;
 		wm8962->pdata.mclk = NULL;
+	} else {
+		clk_prepare_enable(wm8962->pdata.mclk);
 	}
 
 	for (i = 0; i < ARRAY_SIZE(wm8962->supplies); i++)
@@ -3609,6 +3611,8 @@ static int wm8962_i2c_probe(struct i2c_client *i2c,
 	 * sharing a register with the right input volume; explicitly
 	 * bypass the cache to read it.
 	 */
+	if (wm8962->pdata.mclk)
+		clk_prepare_enable(wm8962->pdata.mclk);
 	regcache_cache_bypass(wm8962->regmap, true);
 
 	ret = regmap_read(wm8962->regmap, WM8962_SOFTWARE_RESET, &reg);
@@ -3767,12 +3771,15 @@ static int wm8962_i2c_probe(struct i2c_client *i2c,
 
 	/* The drivers should power up as needed */
 	regulator_bulk_disable(ARRAY_SIZE(wm8962->supplies), wm8962->supplies);
-
+	if (wm8962->pdata.mclk)
+		clk_disable_unprepare(wm8962->pdata.mclk);
 	return 0;
 
 err_pm_runtime:
 	pm_runtime_disable(&i2c->dev);
 err_enable:
+	if (wm8962->pdata.mclk)
+		clk_disable_unprepare(wm8962->pdata.mclk);
 	regulator_bulk_disable(ARRAY_SIZE(wm8962->supplies), wm8962->supplies);
 err:
 	return ret;
