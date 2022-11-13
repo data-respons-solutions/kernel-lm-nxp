@@ -739,7 +739,6 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 		fsl,pins = <
 			MX8MP_IOMUXC_GPIO1_IO04__GPIO1_IO04			0x142		/* EN_32KO-RTC (WLAN SLP_CLK-WLAN)*/
 			MX8MP_IOMUXC_GPIO1_IO09__GPIO1_IO09			0x1c0		/* RTC nIRQ */
-			MX8MP_IOMUXC_GPIO1_IO10__GPIO1_IO10			0x000		/* PWM? */
 			MX8MP_IOMUXC_GPIO1_IO13__GPIO1_IO13			0x002		/* GP--WL_BAT_PWR_EN PMIC_EN-WLAN */
 
 			MX8MP_IOMUXC_SAI1_RXD7__GPIO4_IO09			0x180		/* PWR_BTN_SNS PWR_BTN_SNS-CPUGPI*/
@@ -811,6 +810,14 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 			MX8MP_IOMUXC_ECSPI2_SCLK__GPIO5_IO10	0x004		/* EN_BAT2-CPU */
 			MX8MP_IOMUXC_SAI1_RXD2__GPIO4_IO04		0x002		/* CLR_STATUS , CLR_STATUS-CPUGPO*/
 			MX8MP_IOMUXC_SAI1_RXD6__GPIO4_IO08		0x000		/* DCIN_VALIDO from CPLD */
+		>;
+	};
+
+	/* UART CPR */
+	pinctrl_uart1: uart1grp {
+		fsl,pins = <
+			MX8MP_IOMUXC_UART1_RXD__UART1_DCE_RX	0x102
+			MX8MP_IOMUXC_UART1_TXD__UART1_DCE_TX	0x102
 		>;
 	};
 
@@ -996,11 +1003,24 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 	};
 
 	/* PWM_ECG */
-	pinctrl_pwm_ecg: ecggrp {
+	pinctrl_pwm_ecg: pwm2grp {
 		fsl,pins = <
-			MX8MP_IOMUXC_GPIO1_IO11__PWM2_OUT			0x002
+			MX8MP_IOMUXC_GPIO1_IO11__PWM2_OUT			0x116
 		>;
 	};
+
+	/* PWM_GPO2 */
+	pinctrl_pwm_gpo2: pwm3grp {
+		fsl,pins = <
+			MX8MP_IOMUXC_GPIO1_IO10__PWM3_OUT			0x116
+		>;
+	};
+};
+
+&uart1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart1>;
+	status = "okay";
 };
 
 &uart2 {
@@ -1115,6 +1135,12 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 &pwm2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm_ecg>;
+	status = "okay";
+};
+
+&pwm3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm_gpo2>;
 	status = "okay";
 };
 
