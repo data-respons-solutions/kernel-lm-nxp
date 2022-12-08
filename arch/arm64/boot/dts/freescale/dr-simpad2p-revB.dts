@@ -16,7 +16,7 @@
 #include "imx8mp.dtsi"
 
 / {
-	model = "DR Simpad2p";
+	model = "DR Simpad2p Rev B";
 	compatible = "datarespons,simpad2p", "fsl,imx8mp";
 
 	aliases {
@@ -92,9 +92,36 @@
 			regulator-name = "reg_audio_spk";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
-			gpio = <&gpio1 15 GPIO_ACTIVE_LOW>; /* nEN_SPKPWR */
-			enable-active-low;
+			gpio = <&gpio1 15 GPIO_ACTIVE_HIGH>; /* EN_SPKPWR */
+			vin-supply = <&reg_5v>;
+			enable-active-high;
 		};
+
+		reg_eth_io: eth-io {
+			pinctrl-names = "default";
+			pinctrl-0 = <&pinctrl_reg_eth_io>;
+			compatible = "regulator-fixed";
+			regulator-name = "reg-eth-io";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			gpio = <&gpio3 24 GPIO_ACTIVE_HIGH>; /* EN_PWR-ENET_A */
+			enable-active-high;
+		};
+
+		reg_eth_core: eth-core {
+			pinctrl-names = "default";
+			pinctrl-0 = <&pinctrl_reg_eth_core>;
+			compatible = "regulator-fixed";
+			regulator-name = "reg-eth-core";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+			gpio = <&gpio3 19 GPIO_ACTIVE_HIGH>; /* EN_1V2-ENET_A */
+			enable-active-high;
+			regulator-always-on;
+			vin-supply = <&reg_eth_io>;
+			regulator-ramp-delay = <200>;
+		};
+
 	};
 
 	gpio-keys {
@@ -208,7 +235,7 @@
 		data-mapping = "jeida-24";
 		status = "okay";
 		backlight = <&lvds_backlight>;
-		enable-gpios = <&gpio3 24 GPIO_ACTIVE_HIGH>;
+		enable-gpios = <&gpio3 21 GPIO_ACTIVE_HIGH>;
 		width-mm = <152>;
 		height-mm = <100>;
 
@@ -351,7 +378,7 @@
 	snps,force_thresh_dma_mode;
 	snps,mtl-tx-config = <&mtl_tx_setup>;
 	snps,mtl-rx-config = <&mtl_rx_setup>;
-	status = "disabled";
+	status = "okay";
 
 	mdio {
 		compatible = "snps,dwmac-mdio";
@@ -498,11 +525,13 @@
 };
 
 &sai3 {
+	#clock-cells = <0>;
+	clock-output-names = "sai3_mclk_out";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai3>;
 	assigned-clocks = <&clk IMX8MP_CLK_SAI3>;
 	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
-	assigned-clock-rates = <12288000>;
+	assigned-clock-rates = <24576000>;
 	clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI3_IPG>, <&clk IMX8MP_CLK_DUMMY>,
 		 <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI3_MCLK1>, <&clk IMX8MP_CLK_DUMMY>,
 		 <&clk IMX8MP_CLK_DUMMY>;
@@ -524,10 +553,25 @@
 	codec: wm8962@1a {
 		compatible = "wlf,wm8962";
 		reg = <0x1a>;
-		clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI3_MCLK1>;
+		/*clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI3_MCLK1>;*/
+		clocks = <&sai3>;
 		clock-names = "mclk";
+		DCVDD-supply = <&buck5>;
+		DBVDD-supply = <&buck5>;
+		AVDD-supply = <&buck5>;
+		CPVDD-supply = <&buck5>;
+		MICVDD-supply = <&buck4>;
+		PLLVDD-supply = <&buck5>;
 		SPKVDD1-supply = <&reg_audio_spk>;
 		SPKVDD2-supply = <&reg_audio_spk>;
+		gpio-cfg = <
+			0x0000 /* 0:Default */
+			0x0000 /* 1:Default */
+			0x0000 /* 2:FN_DMICCLK */
+			0x0000 /* 3:Default */
+			0x0000 /* 4:FN_DMICCDAT */
+			0x4703 /* 5:IRQ, low PU */
+		>;
 	   };
 
 	pmic: pca9450@25 {
@@ -567,7 +611,7 @@
 				regulator-always-on;
 			};
 
-			BUCK5 {
+			buck5: BUCK5 {
 				regulator-name = "BUCK5";
 				regulator-min-microvolt = <1650000>;
 				regulator-max-microvolt = <1950000>;
@@ -693,7 +737,7 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 			MX8MP_IOMUXC_GPIO1_IO13__GPIO1_IO13			0x002		/* GP--WL_BAT_PWR_EN PMIC_EN-WLAN */
 			MX8MP_IOMUXC_GPIO1_IO12__GPIO1_IO12			0x006		/* VCC 5V Boost */
 			MX8MP_IOMUXC_GPIO1_IO11__GPIO1_IO11			0x106		/* LVDS Converter PDN_n t */
-			MX8MP_IOMUXC_GPIO1_IO15__GPIO1_IO15			0x142		/* nEN_SPKPWR */
+			MX8MP_IOMUXC_GPIO1_IO15__GPIO1_IO15			0x006		/* EN_SPKPWR */
 
 			MX8MP_IOMUXC_SAI1_RXD2__GPIO4_IO04			0x002		/* CLR_STATUS , CLR_STATUS-CPUGPO*/
 			MX8MP_IOMUXC_SAI1_RXD3__GPIO4_IO05			0x102		/* Charge Eenable */
@@ -707,15 +751,29 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 			MX8MP_IOMUXC_SAI2_MCLK__GPIO4_IO27			0x1c0		/* GP--HP_DET, pullup  HP_DET*/
 			MX8MP_IOMUXC_SAI5_RXD1__GPIO3_IO22			0x102		/* LCD flip H,GP--LCD_L/R  LR-LCD*/
 			MX8MP_IOMUXC_SAI5_RXD2__GPIO3_IO23			0x142		/* LCD flip V, GP--LCD_U/D	UD-LCD*/
-			MX8MP_IOMUXC_SAI5_RXD3__GPIO3_IO24			0x006		/* DISP0_PWR_EN	 EN_PWR-LCD*/
+			MX8MP_IOMUXC_SAI5_RXD0__GPIO3_IO21			0x106		/* EN_PWR-LCD*/
 
 			MX8MP_IOMUXC_SPDIF_EXT_CLK__GPIO5_IO05		0x1c0		/* Mic detect MIC_DET, SPDIF_EXT_CLK???*/
 			MX8MP_IOMUXC_SD2_DATA0__GPIO2_IO15			0x104		/* EN-USB3C_MUX */
+			MX8MP_IOMUXC_SD2_DATA1__GPIO2_IO16			0x140
+			MX8MP_IOMUXC_SD2_DATA2__GPIO2_IO17			0x140
 			MX8MP_IOMUXC_SPDIF_RX__GPIO5_IO04			0x142		/* HOST_WAKEUP_BT, PU */
 			MX8MP_IOMUXC_SPDIF_TX__GPIO5_IO03			0x180		/* BT_WAKEUP_HOST, PD */
 
 			MX8MP_IOMUXC_GPIO1_IO14__GPIO1_IO14			0x106 		/* EN-USBC_Vbus_5V */
 			MX8MP_IOMUXC_SD2_RESET_B__GPIO2_IO19		0x1c0 		/* OTG_ID */
+		>;
+	};
+
+	pinctrl_reg_eth_io: ethiogrp {
+		fsl,pins = <
+			MX8MP_IOMUXC_SAI5_RXD3__GPIO3_IO24	0x106	/* EN_PWR-ENET_A */
+		>;
+	};
+
+	pinctrl_reg_eth_core: ethcoregrp {
+		fsl,pins = <
+			MX8MP_IOMUXC_SAI5_RXFS__GPIO3_IO19	0x106	/* EN_1V2-ENET_A */
 		>;
 	};
 
@@ -880,22 +938,22 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 
 	pinctrl_eqos: eqosgrp {
 		fsl,pins = <
-			MX8MP_IOMUXC_ENET_MDC__ENET_QOS_MDC				0x3
-			MX8MP_IOMUXC_ENET_MDIO__ENET_QOS_MDIO			0x3
-			MX8MP_IOMUXC_ENET_TD3__ENET_QOS_RGMII_TD3		0x1f
-			MX8MP_IOMUXC_ENET_TD2__ENET_QOS_RGMII_TD2		0x1f
-			MX8MP_IOMUXC_ENET_TD1__ENET_QOS_RGMII_TD1		0x1f
-			MX8MP_IOMUXC_ENET_TD0__ENET_QOS_RGMII_TD0		0x1f
-			MX8MP_IOMUXC_ENET_TX_CTL__ENET_QOS_RGMII_TX_CTL 0x1f
-			MX8MP_IOMUXC_ENET_TXC__CCM_ENET_QOS_CLOCK_GENERATE_TX_CLK	0x1f
-			MX8MP_IOMUXC_ENET_RX_CTL__ENET_QOS_RGMII_RX_CTL 0x91
-			MX8MP_IOMUXC_ENET_RXC__CCM_ENET_QOS_CLOCK_GENERATE_RX_CLK			0x91
-			MX8MP_IOMUXC_ENET_RD0__ENET_QOS_RGMII_RD0		0x91
-			MX8MP_IOMUXC_ENET_RD1__ENET_QOS_RGMII_RD1		0x91
-			MX8MP_IOMUXC_ENET_RD2__ENET_QOS_RGMII_RD2		0x91
-			MX8MP_IOMUXC_ENET_RD3__ENET_QOS_RGMII_RD3		0x91
-			MX8MP_IOMUXC_SAI1_RXC__GPIO4_IO01				0x19 /* Phy reset (low) RGMII--CPU_nRST->ETH_nRST  ETHPHY_nRST */
-			MX8MP_IOMUXC_SAI1_RXFS__GPIO4_IO00				0x19 /* Phy IRQ GP--ETH_INT->ETH_INT nINT_ENET_A->ETH_INT */
+			MX8MP_IOMUXC_ENET_MDC__ENET_QOS_MDC				0x2
+			MX8MP_IOMUXC_ENET_MDIO__ENET_QOS_MDIO			0x2
+			MX8MP_IOMUXC_ENET_TD3__ENET_QOS_RGMII_TD3		0x16
+			MX8MP_IOMUXC_ENET_TD2__ENET_QOS_RGMII_TD2		0x16
+			MX8MP_IOMUXC_ENET_TD1__ENET_QOS_RGMII_TD1		0x16
+			MX8MP_IOMUXC_ENET_TD0__ENET_QOS_RGMII_TD0		0x16
+			MX8MP_IOMUXC_ENET_TX_CTL__ENET_QOS_RGMII_TX_CTL 0x16
+			MX8MP_IOMUXC_ENET_TXC__CCM_ENET_QOS_CLOCK_GENERATE_TX_CLK	0x16
+			MX8MP_IOMUXC_ENET_RX_CTL__ENET_QOS_RGMII_RX_CTL 0x80
+			MX8MP_IOMUXC_ENET_RXC__CCM_ENET_QOS_CLOCK_GENERATE_RX_CLK	0x80
+			MX8MP_IOMUXC_ENET_RD0__ENET_QOS_RGMII_RD0		0x00
+			MX8MP_IOMUXC_ENET_RD1__ENET_QOS_RGMII_RD1		0x00
+			MX8MP_IOMUXC_ENET_RD2__ENET_QOS_RGMII_RD2		0x00
+			MX8MP_IOMUXC_ENET_RD3__ENET_QOS_RGMII_RD3		0x00
+			MX8MP_IOMUXC_SAI1_RXC__GPIO4_IO01				0x004 /* ETHPHY_nRST */
+			MX8MP_IOMUXC_SAI1_RXFS__GPIO4_IO00				0x1C0 /* Phy IRQ */
 
 		>;
 	};
@@ -933,6 +991,8 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 &uart3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart3>;
+	assigned-clocks = <&clk IMX8MP_CLK_UART3>;
+	assigned-clock-parents = <&clk IMX8MP_SYS_PLL1_80M>;
 	fsl,uart-has-rtscts;
 	status = "okay";
 
@@ -1095,7 +1155,7 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 	assigned-clock-parents = <&clk IMX8MP_SYS_PLL2_500M>,
 				 <&clk IMX8MP_SYS_PLL2_50M>;
 	l1ss-disabled;
-	status = "disabled";
+	status = "okay";
 
 	wifi_wake_host {
 		compatible = "nxp,wifi-wake-host";
@@ -1107,7 +1167,7 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 
 &pcie_phy{
 	ext_osc = <1>;
-	status = "disabled";
+	status = "okay";
 };
 
 &easrc {
