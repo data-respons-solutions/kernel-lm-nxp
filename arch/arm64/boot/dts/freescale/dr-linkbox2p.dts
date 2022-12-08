@@ -134,7 +134,7 @@
 		};
 	};
 */
-	sound-wm8962 {
+	sound_2ch {
 		compatible = "fsl,lm-imx-audio-wm8962";
 		model = "wm8962-audio";
 		audio-cpu = <&sai3>;
@@ -461,32 +461,14 @@
 	};
 };
 
-
-
-
-/* Slave clock mode
-&sai1_mclk {
-	clock-frequency = <24576000>;
-};
 &sai1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_sai1>;
-	assigned-clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI1_MCLK1_SEL>, <&sai1_mclk>;
-	assigned-clock-parents =  <&sai1_mclk>;
-	clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI1_IPG>, <&clk IMX8MP_CLK_DUMMY>,
-		<&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI1_MCLK1>, <&clk IMX8MP_CLK_DUMMY>,
-		<&clk IMX8MP_CLK_DUMMY>;
-	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
-	status = "okay";
-};
-*/
-
-&sai1 {
+	#clock-cells = <0>;
+	clock-output-names = "sai1_mclk_out";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai1>;
 	assigned-clocks = <&clk IMX8MP_CLK_SAI1>;
 	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
-	assigned-clock-rates = <8192000>;
+	assigned-clock-rates = <24576000>;
 	clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI1_IPG>, <&clk IMX8MP_CLK_DUMMY>,
 		<&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI1_MCLK1>, <&clk IMX8MP_CLK_DUMMY>,
 		<&clk IMX8MP_CLK_DUMMY>;
@@ -505,30 +487,14 @@
 	status = "disabled";
 };
 
-
-
-/* Slave clock mode
-&sai3_mclk {
-	clock-frequency = <24576000>;
-};
 &sai3 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_sai3>;
-	assigned-clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI3_MCLK1_SEL>, <&sai3_mclk>;
-	assigned-clock-parents =  <&sai3_mclk>;
-	clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI3_IPG>, <&clk IMX8MP_CLK_DUMMY>,
-		<&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI3_MCLK1>, <&clk IMX8MP_CLK_DUMMY>,
-		<&clk IMX8MP_CLK_DUMMY>;
-	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
-	status = "okay";
-};
-*/
-&sai3 {
+	#clock-cells = <0>;
+	clock-output-names = "sai3_mclk_out";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai3>;
 	assigned-clocks = <&clk IMX8MP_CLK_SAI3>;
 	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
-	assigned-clock-rates = <12288000>;
+	assigned-clock-rates = <24576000>;
 	clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI3_IPG>, <&clk IMX8MP_CLK_DUMMY>,
 		<&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI3_MCLK1>, <&clk IMX8MP_CLK_DUMMY>,
 		<&clk IMX8MP_CLK_DUMMY>;
@@ -567,7 +533,7 @@
 		PLLVDD-supply = <&buck5>;
 		SPKVDD1-supply = <&buck4>;
 		SPKVDD2-supply = <&buck4>;
-		clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI3_MCLK1>;
+		clocks = <&sai3>;
 		clock-names = "mclk";
 /*		interrupts = <28 IRQ_TYPE_LEVEL_LOW>;
 		interrupt-parent = <&gpio4>; */
@@ -701,7 +667,7 @@
 	codec_pcm1681: pcm1681@4c {
 		compatible = "ti,pcm1681";
 		reg = <0x4c>;
-		clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIO_BLK_CTRL_SAI1_MCLK1>;
+		clocks = <&sai1>;
 		clock-names = "mclk";
 	};
 
@@ -847,6 +813,14 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 			MX8MP_IOMUXC_ECSPI2_SCLK__GPIO5_IO10	0x004		/* EN_BAT2-CPU */
 			MX8MP_IOMUXC_SAI1_RXD2__GPIO4_IO04		0x002		/* CLR_STATUS , CLR_STATUS-CPUGPO*/
 			MX8MP_IOMUXC_SAI1_RXD6__GPIO4_IO08		0x000		/* DCIN_VALIDO from CPLD */
+		>;
+	};
+
+	/* UART CPR */
+	pinctrl_uart1: uart1grp {
+		fsl,pins = <
+			MX8MP_IOMUXC_UART1_RXD__UART1_DCE_RX	0x102
+			MX8MP_IOMUXC_UART1_TXD__UART1_DCE_TX	0x104
 		>;
 	};
 
@@ -1040,6 +1014,12 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 	};
 };
 
+&uart1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart1>;
+	status = "okay";
+};
+
 &uart2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart2>;
@@ -1049,6 +1029,8 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 &uart3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart3>;
+	assigned-clocks = <&clk IMX8MP_CLK_UART3>;
+	assigned-clock-parents = <&clk IMX8MP_SYS_PLL1_80M>;
 	fsl,uart-has-rtscts;
 	status = "okay";
 
