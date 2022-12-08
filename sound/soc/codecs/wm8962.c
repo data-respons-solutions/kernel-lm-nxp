@@ -3538,8 +3538,6 @@ static int wm8962_set_pdata_from_of(struct i2c_client *i2c,
 				pdata->gpio_init[i] = 0x0;
 		}
 
-	pdata->mclk = devm_clk_get(&i2c->dev, NULL);
-
 	return 0;
 }
 
@@ -3550,11 +3548,32 @@ static int wm8962_i2c_probe(struct i2c_client *i2c,
 	struct wm8962_priv *wm8962;
 	unsigned int reg;
 	int ret, i, irq_pol, trigger;
+	struct clk *mclk;
 
 	wm8962 = devm_kzalloc(&i2c->dev, sizeof(*wm8962), GFP_KERNEL);
 	if (wm8962 == NULL)
 		return -ENOMEM;
 
+	mclk = devm_clk_get(&i2c->dev, NULL);
+	if (IS_ERR(mclk)) {
+		/* But do not ignore the request for probe defer */
+		if (PTR_ERR(mclk) == -EPROBE_DEFER) {
+			dev_info(&i2c->dev, "Defer on mclk get\n");
+			return -EPROBE_DEFER;
+		}
+	} else {
+		wm8962->pdata.mclk = mclk;
+		clk_prepare_enable(wm8962->pdata.mclk);
+	}
+	/* If platform data was supplied, update the default data in priv */
+	if (pdata) {
+		memcpy(&wm8962->pdata, pdata, sizeof(struct wm8962_pdata));
+		wm8962->pdata.mclk = mclk;
+	} else if (i2c->dev.of_node) {
+		ret = wm8962_set_pdata_from_of(i2c, &wm8962->pdata);
+		if (ret != 0)
+			return ret;
+	}
 	mutex_init(&wm8962->dsp2_ena_lock);
 
 	i2c_set_clientdata(i2c, wm8962);
@@ -3562,25 +3581,6 @@ static int wm8962_i2c_probe(struct i2c_client *i2c,
 	INIT_DELAYED_WORK(&wm8962->mic_work, wm8962_mic_work);
 	init_completion(&wm8962->fll_lock);
 	wm8962->irq = i2c->irq;
-
-	/* If platform data was supplied, update the default data in priv */
-	if (pdata) {
-		memcpy(&wm8962->pdata, pdata, sizeof(struct wm8962_pdata));
-	} else if (i2c->dev.of_node) {
-		ret = wm8962_set_pdata_from_of(i2c, &wm8962->pdata);
-		if (ret != 0)
-			return ret;
-	}
-
-	/* Mark the mclk pointer to NULL if no mclk assigned */
-	if (IS_ERR(wm8962->pdata.mclk)) {
-		/* But do not ignore the request for probe defer */
-		if (PTR_ERR(wm8962->pdata.mclk) == -EPROBE_DEFER)
-			return -EPROBE_DEFER;
-		wm8962->pdata.mclk = NULL;
-	} else {
-		clk_prepare_enable(wm8962->pdata.mclk);
-	}
 
 	for (i = 0; i < ARRAY_SIZE(wm8962->supplies); i++)
 		wm8962->supplies[i].supply = wm8962_supply_names[i];
