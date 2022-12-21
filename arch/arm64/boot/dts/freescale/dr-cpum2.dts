@@ -132,7 +132,7 @@
 		status-green {
 			gpios = <&gpio5 8 GPIO_ACTIVE_HIGH>;
 			default-state = "on";
-			linux,default-trigger = "heartbeat";
+			linux,default-trigger = "timer";
 		};
 
 		status-blue {
