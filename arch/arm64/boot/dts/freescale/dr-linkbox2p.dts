@@ -147,7 +147,10 @@
 			"Ext Spk", "SPKOUTL",
 			"Ext Spk", "SPKOUTR",
 			"AMIC", "MICBIAS",
-			"IN3R", "AMIC";
+			"IN1L", "AMIC",
+			"IN1R", "AMIC",
+			"IN2L", "AMIC",
+			"IN2R", "AMIC";
 	};
 
 	leds {
