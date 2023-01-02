@@ -828,6 +828,7 @@ static bool wm8962_readable_register(struct device *dev, unsigned int reg)
 	case WM8962_ADDITIONAL_CONTROL_2:
 	case WM8962_PWR_MGMT_1:
 	case WM8962_PWR_MGMT_2:
+	case WM8962_PWR_MGMT_3:
 	case WM8962_ADDITIONAL_CONTROL_3:
 	case WM8962_ANTI_POP:
 	case WM8962_CLOCKING_3:
@@ -1663,6 +1664,11 @@ static const char *cap_lhpf_mode_text[] = {
 static SOC_ENUM_SINGLE_DECL(cap_lhpf_mode,
 			    WM8962_LHPF1, 1, cap_lhpf_mode_text);
 
+static const char *micbias_mode_text[] = {
+	"MICBIAS_LVL", "AVDDx1.63", "AVDDx1.34",  "AVDDx1.63"
+};
+
+static SOC_ENUM_SINGLE_DECL(micbias_mode, WM8962_PWR_MGMT_3, 0, micbias_mode_text);
 static const struct snd_kcontrol_new wm8962_snd_controls[] = {
 SOC_DOUBLE("Input Mixer Switch", WM8962_INPUT_MIXER_CONTROL_1, 3, 2, 1, 1),
 
@@ -1693,6 +1699,8 @@ SOC_ENUM("Capture HPF Mode", cap_hpf_mode),
 SOC_SINGLE("Capture HPF Cutoff", WM8962_ADC_DAC_CONTROL_2, 7, 7, 0),
 SOC_SINGLE("Capture LHPF Switch", WM8962_LHPF1, 0, 1, 0),
 SOC_ENUM("Capture LHPF Mode", cap_lhpf_mode),
+
+SOC_ENUM("Capture MICBIAS Volt", micbias_mode),
 
 SOC_DOUBLE_R_TLV("Sidetone Volume", WM8962_DAC_DSP_MIXING_1,
 		 WM8962_DAC_DSP_MIXING_2, 4, 12, 0, st_tlv),
@@ -1980,13 +1988,13 @@ static int hp_event(struct snd_soc_dapm_widget *w,
 				    WM8962_HP1L_ENA_DLY | WM8962_HP1R_ENA_DLY |
 				    WM8962_HP1L_ENA_OUTP |
 				    WM8962_HP1R_ENA_OUTP, 0);
-				    
+
 		break;
 
 	default:
 		WARN(1, "Invalid event %d\n", event);
 		return -EINVAL;
-	
+
 	}
 
 	return 0;
@@ -2226,7 +2234,7 @@ SND_SOC_DAPM_MIXER("Speaker Mixer", WM8962_MIXER_ENABLES, 1, 0,
 		   spkmixl, ARRAY_SIZE(spkmixl)),
 SND_SOC_DAPM_MUX_E("Speaker PGA", WM8962_PWR_MGMT_2, 4, 0, &spkoutl_mux,
 		   out_pga_event, SND_SOC_DAPM_POST_PMU),
-SND_SOC_DAPM_PGA("Speaker Output", WM8962_CLASS_D_CONTROL_1, 7, 0, NULL, 0),
+SND_SOC_DAPM_PGA("Speaker Output", WM8962_CLASS_D_CONTROL_1, 6, 0, NULL, 0),
 SND_SOC_DAPM_OUTPUT("SPKOUT"),
 };
 
@@ -3135,7 +3143,7 @@ static irqreturn_t wm8962_irq(int irq, void *data)
 	}
 
 	if (active & (WM8962_MICSCD_EINT | WM8962_MICD_EINT)) {
-		dev_dbg(dev, "Microphone event detected\n");
+		dev_dbg(dev, "Microphone event (0x%x) detected\n", active);
 
 #ifndef CONFIG_SND_SOC_WM8962_MODULE
 		trace_snd_soc_jack_irq(dev_name(dev));
@@ -3170,20 +3178,27 @@ int wm8962_mic_detect(struct snd_soc_component *component, struct snd_soc_jack *
 {
 	struct wm8962_priv *wm8962 = snd_soc_component_get_drvdata(component);
 	struct snd_soc_dapm_context *dapm = snd_soc_component_get_dapm(component);
-	int irq_mask, enable;
+	int irq_mask, enable, ret;
 
 	wm8962->jack = jack;
+	ret = pm_runtime_get_sync(component->dev);
+	if (ret < 0) {
+		pm_runtime_put_noidle(component->dev);
+		dev_err(component->dev, "%s: Failed to resume: %d\n", __func__, ret);
+		return ret;
+	}
 	if (jack) {
 		irq_mask = 0;
 		enable = WM8962_MICDET_ENA;
 	} else {
 		irq_mask = WM8962_MICD_EINT | WM8962_MICSCD_EINT;
 		enable = 0;
+		cancel_delayed_work(&wm8962->mic_work);
 	}
 
-	snd_soc_component_update_bits(component, WM8962_INTERRUPT_STATUS_2_MASK,
+	regmap_update_bits(wm8962->regmap, WM8962_INTERRUPT_STATUS_2_MASK,
 			    WM8962_MICD_EINT | WM8962_MICSCD_EINT, irq_mask);
-	snd_soc_component_update_bits(component, WM8962_ADDITIONAL_CONTROL_4,
+	regmap_update_bits(wm8962->regmap, WM8962_ADDITIONAL_CONTROL_4,
 			    WM8962_MICDET_ENA, enable);
 
 	/* Send an initial empty report */
@@ -3201,6 +3216,7 @@ int wm8962_mic_detect(struct snd_soc_component *component, struct snd_soc_jack *
 	}
 
 	snd_soc_dapm_mutex_unlock(dapm);
+	pm_runtime_put_noidle(component->dev);
 
 	return 0;
 }
@@ -3591,8 +3607,6 @@ static int wm8962_set_pdata_from_of(struct i2c_client *i2c,
 				pdata->gpio_init[i] = 0x0;
 		}
 
-	pdata->mclk = devm_clk_get(&i2c->dev, NULL);
-
 	return 0;
 }
 
@@ -3603,11 +3617,32 @@ static int wm8962_i2c_probe(struct i2c_client *i2c,
 	struct wm8962_priv *wm8962;
 	unsigned int reg;
 	int ret, i, irq_pol, trigger;
+	struct clk *mclk;
 
 	wm8962 = devm_kzalloc(&i2c->dev, sizeof(*wm8962), GFP_KERNEL);
 	if (wm8962 == NULL)
 		return -ENOMEM;
 
+	mclk = devm_clk_get(&i2c->dev, NULL);
+	if (IS_ERR(mclk)) {
+		/* But do not ignore the request for probe defer */
+		if (PTR_ERR(mclk) == -EPROBE_DEFER) {
+			dev_info(&i2c->dev, "Defer on mclk get\n");
+			return -EPROBE_DEFER;
+		}
+	} else {
+		wm8962->pdata.mclk = mclk;
+		clk_prepare_enable(wm8962->pdata.mclk);
+	}
+	/* If platform data was supplied, update the default data in priv */
+	if (pdata) {
+		memcpy(&wm8962->pdata, pdata, sizeof(struct wm8962_pdata));
+		wm8962->pdata.mclk = mclk;
+	} else if (i2c->dev.of_node) {
+		ret = wm8962_set_pdata_from_of(i2c, &wm8962->pdata);
+		if (ret != 0)
+			return ret;
+	}
 	mutex_init(&wm8962->dsp2_ena_lock);
 
 	i2c_set_clientdata(i2c, wm8962);
@@ -3615,23 +3650,6 @@ static int wm8962_i2c_probe(struct i2c_client *i2c,
 	INIT_DELAYED_WORK(&wm8962->mic_work, wm8962_mic_work);
 	init_completion(&wm8962->fll_lock);
 	wm8962->irq = i2c->irq;
-
-	/* If platform data was supplied, update the default data in priv */
-	if (pdata) {
-		memcpy(&wm8962->pdata, pdata, sizeof(struct wm8962_pdata));
-	} else if (i2c->dev.of_node) {
-		ret = wm8962_set_pdata_from_of(i2c, &wm8962->pdata);
-		if (ret != 0)
-			return ret;
-	}
-
-	/* Mark the mclk pointer to NULL if no mclk assigned */
-	if (IS_ERR(wm8962->pdata.mclk)) {
-		/* But do not ignore the request for probe defer */
-		if (PTR_ERR(wm8962->pdata.mclk) == -EPROBE_DEFER)
-			return -EPROBE_DEFER;
-		wm8962->pdata.mclk = NULL;
-	}
 
 	for (i = 0; i < ARRAY_SIZE(wm8962->supplies); i++)
 		wm8962->supplies[i].supply = wm8962_supply_names[i];
@@ -3821,16 +3839,17 @@ static int wm8962_i2c_probe(struct i2c_client *i2c,
 	regmap_update_bits(wm8962->regmap, WM8962_ADDITIONAL_CONTROL_4,
 			    WM8962_TEMP_ENA_SPK_MASK, 0);
 
-	regcache_cache_only(wm8962->regmap, true);
-
 	/* The drivers should power up as needed */
 	regulator_bulk_disable(ARRAY_SIZE(wm8962->supplies), wm8962->supplies);
-
+	if (wm8962->pdata.mclk)
+		clk_disable_unprepare(wm8962->pdata.mclk);
 	return 0;
 
 err_pm_runtime:
 	pm_runtime_disable(&i2c->dev);
 err_enable:
+	if (wm8962->pdata.mclk)
+		clk_disable_unprepare(wm8962->pdata.mclk);
 	regulator_bulk_disable(ARRAY_SIZE(wm8962->supplies), wm8962->supplies);
 err:
 	return ret;
@@ -3860,8 +3879,6 @@ static int wm8962_runtime_resume(struct device *dev)
 		dev_err(dev, "Failed to enable supplies: %d\n", ret);
 		goto disable_clock;
 	}
-
-	regcache_cache_only(wm8962->regmap, false);
 
 	wm8962_reset(wm8962);
 
@@ -3913,7 +3930,6 @@ static int wm8962_runtime_suspend(struct device *dev)
 			   WM8962_STARTUP_BIAS_ENA |
 			   WM8962_VMID_BUF_ENA, 0);
 
-	regcache_cache_only(wm8962->regmap, true);
 
 	regulator_bulk_disable(ARRAY_SIZE(wm8962->supplies),
 			       wm8962->supplies);
