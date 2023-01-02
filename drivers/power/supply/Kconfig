@@ -926,4 +926,16 @@ config BATTERY_UG3105
 	  device is off or suspended, the functionality of this driver is
 	  limited to reporting capacity only.
 
+config LINKBOX_PLUS_PSY
+    tristate "Linkbox Plus Power Supply"
+    depends on I2C && GPIOLIB
+    help
+        Say Y to enable Linkbox Plus PSY
+
+config SIMPAD_PLUS_PSY
+    tristate "Simpad Plus Power Supply"
+    depends on GPIOLIB
+    help
+        Say Y to enable Simpad Plus PSY
+
 endif # POWER_SUPPLY
