@@ -13,7 +13,7 @@
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/usb/pd.h>
-#include "imx8mp.dtsi"
+#include "imx8mp-nominal.dtsi"
 
 / {
 	model = "DR CPU Module 2";
