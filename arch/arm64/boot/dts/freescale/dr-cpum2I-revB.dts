@@ -13,5 +13,5 @@
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/usb/pd.h>
-#include "imx8mp-nominal.dtsi"
+#include "imx8mp-nominal-industrial.dtsi"
 #include "dr-cpum2-revB.dtsi"

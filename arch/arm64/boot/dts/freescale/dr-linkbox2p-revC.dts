@@ -13,7 +13,7 @@
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/usb/pd.h>
-#include "imx8mp-lite-nominal.dtsi"
+#include "imx8mp-nominal.dtsi"
 
 / {
 	model = "DR Linkbox2p Rev C";
@@ -339,7 +339,7 @@
 &gpio5 {
 	gpio-line-names = "", "", "", "bt-wake-host", "host-wake-bt", "", "", "",
 						"", "", "", "", "", "", "", "",
-						"", "", "", "", "pcie-clkreqn", "", "", "";
+						"", "", "", "", "", "", "", "";
 };
 
 
@@ -580,6 +580,7 @@
 		reg = <0x32>;
 		interrupt-parent = <&gpio1>;
 		interrupts = <9 IRQ_TYPE_LEVEL_LOW>;
+		wakeup-source;
 	};
 
 	ina_manikin: ina-manikin@41 {
@@ -767,10 +768,10 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 			MX8MP_IOMUXC_UART1_TXD__GPIO5_IO23		0x106		/* EN-5V-MANIKIN */
 			MX8MP_IOMUXC_GPIO1_IO06__GPIO1_IO06 	0x026		/* nSD-AC5W (OD) */
 			MX8MP_IOMUXC_SAI1_RXD3__GPIO4_IO05		0x006		/* nSD-1WSP */
-			MX8MP_IOMUXC_SAI5_RXD1__GPIO3_IO22		0x1c0		/* GP--BAT1_nDET */
-			MX8MP_IOMUXC_SAI1_TXD1__GPIO4_IO13  	0x1c0		/* BAT2_DET_N */
-            MX8MP_IOMUXC_SAI5_RXD2__GPIO3_IO23		0x1c0		/* nVALID_2 */
-            MX8MP_IOMUXC_GPIO1_IO07__GPIO1_IO07		0x1c0		/* nVALID_3 */
+			MX8MP_IOMUXC_SAI5_RXD1__GPIO3_IO22		0x080		/* GP--BAT1_nDET */
+			MX8MP_IOMUXC_SAI1_TXD1__GPIO4_IO13  	0x080		/* BAT2_DET_N */
+            MX8MP_IOMUXC_SAI5_RXD2__GPIO3_IO23		0x080		/* nVALID_2 */
+            MX8MP_IOMUXC_GPIO1_IO07__GPIO1_IO07		0x080		/* nVALID_3 */
             MX8MP_IOMUXC_SAI1_RXD5__GPIO4_IO07		0x000		/* START_ADAPTER-CPUGPI */
             MX8MP_IOMUXC_SAI1_RXD4__GPIO4_IO06		0x000		/* START_KEY-CPUGPI */
 
@@ -1023,6 +1024,7 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 
 &uart3 {
 	status = "okay";
+	fsl,dte-mode;
 };
 
 &uart4 {
