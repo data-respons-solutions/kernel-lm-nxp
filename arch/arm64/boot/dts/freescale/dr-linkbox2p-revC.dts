@@ -230,7 +230,7 @@
 		status = "okay";
 		compatible = "datarespons,linkbox-plus-psy";
 		valid-gpios = <&gpio4 8 GPIO_ACTIVE_HIGH &gpio3 23 GPIO_ACTIVE_LOW &gpio1 7 GPIO_ACTIVE_LOW>;
-		startup-gpios = <&gpio4 7 GPIO_ACTIVE_HIGH &gpio4 6 GPIO_ACTIVE_HIGH>;
+		startup-gpios = <&gpio4 15 GPIO_ACTIVE_HIGH &gpio4 16 GPIO_ACTIVE_HIGH>;
 		manikin-5v-gpio = <&gpio5 23 GPIO_ACTIVE_HIGH>;
 		manikin-12v-gpio = <&gpio5 22 GPIO_ACTIVE_HIGH>;
 		bat-detect-gpios = <&gpio3 22 GPIO_ACTIVE_LOW &gpio4 13 GPIO_ACTIVE_LOW>;
